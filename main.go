@@ -39,7 +39,7 @@ import (
 	"github.com/networkservicemesh/sdk/pkg/tools/log"
 	"github.com/networkservicemesh/sdk/pkg/tools/signalctx"
 
-	"github.com/networkservicemesh/cmd-forwarder-sriov/local/sdk-sriov/pkg/networkservice/chains/xconnectns"
+	"github.com/networkservicemesh/cmd-forwarder-sriov/local/sdk-sriov/pkg/networkservice/chains/sriov"
 )
 
 // Config - configuration for cmd-forwarder-sriov
@@ -90,7 +90,7 @@ func main() {
 	logrus.Infof("SVID: %q", svid.ID)
 
 	// XConnect Network Service Endpoint
-	endpoint := xconnectns.NewServer(
+	endpoint := sriov.NewServer(
 		config.Name,
 		authorize.NewServer(),
 		spiffejwt.TokenGeneratorFunc(source, config.MaxTokenLifetime),

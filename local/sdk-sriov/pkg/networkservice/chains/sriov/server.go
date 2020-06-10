@@ -14,8 +14,8 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-// Package xconnectns provides an Endpoint that implements the cross connect networks service for use as a Forwarder SRIOV
-package xconnectns
+// Package sriov provides an Endpoint that implements the networks service for use as a Forwarder SRIOV
+package sriov
 
 import (
 	"net/url"
@@ -32,7 +32,7 @@ import (
 	"google.golang.org/grpc"
 )
 
-type xconnectNSServer struct {
+type sriovServer struct {
 	endpoint.Endpoint
 }
 
@@ -43,7 +43,7 @@ type xconnectNSServer struct {
 //             -clientUrl - *url.URL for the talking to the NSMgr
 //             -...clientDialOptions - dialOptions for dialing the NSMgr
 func NewServer(name string, authzServer networkservice.NetworkServiceServer, tokenGenerator token.GeneratorFunc, clientURL *url.URL, clientDialOptions ...grpc.DialOption) endpoint.Endpoint {
-	rv := xconnectNSServer{}
+	rv := sriovServer{}
 	rv.Endpoint = endpoint.NewServer(
 		name,
 		authzServer,
