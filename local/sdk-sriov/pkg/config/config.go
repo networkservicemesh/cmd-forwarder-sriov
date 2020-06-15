@@ -23,6 +23,8 @@ import (
 	"io/ioutil"
 	"path/filepath"
 
+	"github.com/pkg/errors"
+
 	"github.com/networkservicemesh/cmd-forwarder-sriov/local/sdk-sriov/pkg/types"
 )
 
@@ -32,11 +34,11 @@ func ReadConfig(configFile string) (*types.ResourceConfigList, error) {
 
 	rawBytes, err := ioutil.ReadFile(filepath.Clean(configFile))
 	if err != nil {
-		return nil, fmt.Errorf("error reading file %s, %v", configFile, err)
+		return nil, errors.Errorf("error reading file %s, %v", configFile, err)
 	}
 
 	if err = json.Unmarshal(rawBytes, resources); err != nil {
-		return nil, fmt.Errorf("error unmarshalling raw bytes %v", err)
+		return nil, errors.Errorf("error unmarshalling raw bytes %v", err)
 	}
 
 	fmt.Printf("raw ResourceList: %s", rawBytes)
