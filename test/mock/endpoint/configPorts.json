@@ -1,0 +1,16 @@
+{
+	"resourceList": [
+		{
+			"registryDomainName": "example1.com",
+			"capability": "10G",
+			"devicePciAddress": "pciAddr1",
+			"connectedToPort": "macAddr1"
+		},
+		{
+			"registryDomainName": "primer.ru",
+			"capability": "10G",
+			"devicePciAddress": "pciAddr2",
+			"connectedToPort": "macAddr2"
+		}
+	]
+}

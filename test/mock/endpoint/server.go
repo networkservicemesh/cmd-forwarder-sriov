@@ -24,10 +24,20 @@ import (
 	"net/url"
 	"strings"
 
+	"github.com/networkservicemesh/cmd-forwarder-sriov/local/sdk-sriov/pkg/config"
+	"github.com/networkservicemesh/cmd-forwarder-sriov/local/sdk-sriov/pkg/types"
+
 	"github.com/golang/protobuf/ptypes/empty"
 	"github.com/networkservicemesh/api/pkg/api/networkservice"
 	"github.com/networkservicemesh/sdk/pkg/tools/grpcutils"
 	"google.golang.org/grpc"
+)
+
+const (
+	availablePortsKey string = "availablePorts"
+	endpointPortKey   string = "endpointPort"
+
+	configFileName string = "configPorts.json"
 )
 
 type nseImpl struct {
@@ -37,6 +47,8 @@ type nseImpl struct {
 	listenOn  *url.URL
 	errorChan <-chan error
 }
+
+var configList *types.ResourceConfigList
 
 // NewServer a new endpoint and running on grpc server
 func NewServer(ctx context.Context, listenOn *url.URL) (server *grpc.Server, errChan <-chan error) {
@@ -48,6 +60,9 @@ func NewServer(ctx context.Context, listenOn *url.URL) (server *grpc.Server, err
 
 	nse.ctx, nse.cancel = context.WithCancel(ctx)
 	nse.errorChan = grpcutils.ListenAndServe(nse.ctx, nse.listenOn, nse.server)
+
+	configList, _ = config.ReadConfig(configFileName)
+
 	return nse.server, nse.errorChan
 }
 
@@ -55,11 +70,27 @@ func (d *nseImpl) Request(ctx context.Context, request *networkservice.NetworkSe
 	request.Connection.Mechanism.Parameters = map[string]string{}
 	err := errors.New("'availablePorts' is empty")
 
-	if macListStr, exist := request.MechanismPreferences[0].Parameters["availablePorts"]; exist {
+	if macListStr, exist := request.MechanismPreferences[0].Parameters[availablePortsKey]; exist {
 		macList := strings.Split(macListStr, ",")
-		randomIndex := rand.Intn(len(macList))
-		request.Connection.Mechanism.Parameters = map[string]string{"endpointPort": macList[randomIndex]}
 		err = nil
+
+		// select from received ports
+		if configList == nil {
+			randomIndex := rand.Intn(len(macList))
+			request.Connection.Mechanism.Parameters = map[string]string{endpointPortKey: macList[randomIndex]}
+		} else { // search supported port
+			for _, config := range configList.ResourceList {
+				for _, mac := range macList {
+					if config.ConnectedToPort == mac {
+						request.Connection.Mechanism.Parameters = map[string]string{endpointPortKey: mac}
+
+						return request.GetConnection(), nil
+					}
+				}
+			}
+
+			err = errors.New("Specified ports are not supported")
+		}
 	}
 
 	return request.GetConnection(), err
