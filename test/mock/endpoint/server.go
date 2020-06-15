@@ -14,7 +14,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-// Package callbacknse define a test NSE listening on passed URL.
+// Package endpoint define a test endpoint listening on passed URL.
 package endpoint
 
 import (
