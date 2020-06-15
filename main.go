@@ -18,6 +18,7 @@ package main
 
 import (
 	"context"
+	"flag"
 	"net/url"
 	"os"
 	"time"
@@ -39,7 +40,9 @@ import (
 	"github.com/networkservicemesh/sdk/pkg/tools/log"
 	"github.com/networkservicemesh/sdk/pkg/tools/signalctx"
 
+	"github.com/networkservicemesh/cmd-forwarder-sriov/local/sdk-sriov/pkg/config"
 	"github.com/networkservicemesh/cmd-forwarder-sriov/local/sdk-sriov/pkg/networkservice/chains/sriov"
+	"github.com/networkservicemesh/cmd-forwarder-sriov/local/sdk-sriov/pkg/resourcepool"
 )
 
 // Config - configuration for cmd-forwarder-sriov
@@ -48,6 +51,14 @@ type Config struct {
 	ListenOn         url.URL       `default:"unix:///listen.on.socket" desc:"url to listen on" split_words:"true"`
 	ConnectTo        url.URL       `default:"unix:///connect.to.socket" desc:"url to connect to" split_words:"true"`
 	MaxTokenLifetime time.Duration `default:"24h" desc:"maximum lifetime of tokens" split_words:"true"`
+}
+
+const (
+	defaultConfig = "/etc/nsm/sriov/config.yaml"
+)
+
+type cliFlags struct {
+	configFile string
 }
 
 func main() {
@@ -68,15 +79,15 @@ func main() {
 	starttime := time.Now()
 
 	// Get config from environment
-	config := &Config{}
-	if err := envconfig.Usage("nsm", config); err != nil {
+	cfg := &Config{}
+	if err := envconfig.Usage("nsm", cfg); err != nil {
 		logrus.Fatal(err)
 	}
-	if err := envconfig.Process("nsm", config); err != nil {
+	if err := envconfig.Process("nsm", cfg); err != nil {
 		logrus.Fatalf("error processing config from env: %+v", err)
 	}
 
-	log.Entry(ctx).Infof("Config: %#v", config)
+	log.Entry(ctx).Infof("Config: %#v", cfg)
 
 	// Get a X509Source
 	source, err := workloadapi.NewX509Source(ctx)
@@ -89,12 +100,36 @@ func main() {
 	}
 	logrus.Infof("SVID: %q", svid.ID)
 
+	cf := &cliFlags{}
+	flag.StringVar(&cf.configFile, "config-file", defaultConfig, "YAML device pool config file location")
+	flag.Parse()
+
+	logrus.Infof("reading configs")
+	resourceCfg, err := config.ReadConfig(cf.configFile)
+	if err != nil {
+		logrus.Fatalf("error getting config from file %v", cf.configFile)
+		return
+	}
+
+	if len(resourceCfg.ResourceList) < 1 {
+		logrus.Fatalf("no resource configuration; exiting")
+		return
+	}
+
+	rp := resource_pool.NewNetResourcePool()
+	err = rp.AddNetDevices(resourceCfg)
+	if err != nil {
+		logrus.Fatalf("error processing devices from config: %v", err)
+		return
+	}
+
 	// XConnect Network Service Endpoint
 	endpoint := sriov.NewServer(
-		config.Name,
+		cfg.Name,
+		rp,
 		authorize.NewServer(),
-		spiffejwt.TokenGeneratorFunc(source, config.MaxTokenLifetime),
-		&config.ConnectTo,
+		spiffejwt.TokenGeneratorFunc(source, cfg.MaxTokenLifetime),
+		&cfg.ConnectTo,
 		grpc.WithTransportCredentials(credentials.NewTLS(tlsconfig.MTLSClientConfig(source, source, tlsconfig.AuthorizeAny()))),
 		grpc.WithDefaultCallOptions(grpc.WaitForReady(true)),
 	)
@@ -103,7 +138,7 @@ func main() {
 	// TODO - add ServerOptions for Tracing
 	server := grpc.NewServer(grpc.Creds(credentials.NewTLS(tlsconfig.MTLSServerConfig(source, source, tlsconfig.AuthorizeAny()))))
 	endpoint.Register(server)
-	srvErrCh := grpcutils.ListenAndServe(ctx, &config.ListenOn, server)
+	srvErrCh := grpcutils.ListenAndServe(ctx, &cfg.ListenOn, server)
 	exitOnErr(ctx, cancel, srvErrCh)
 	log.Entry(ctx).Infof("Startup completed in %v", time.Since(starttime))
 

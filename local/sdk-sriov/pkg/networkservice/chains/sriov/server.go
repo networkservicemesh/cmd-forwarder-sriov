@@ -18,6 +18,7 @@
 package sriov
 
 import (
+	"github.com/networkservicemesh/cmd-forwarder-sriov/local/sdk-sriov/pkg/types"
 	"net/url"
 
 	"github.com/networkservicemesh/api/pkg/api/networkservice"
@@ -42,7 +43,7 @@ type sriovServer struct {
 //             -tokenGenerator - token.GeneratorFunc - generates tokens for use in Path
 //             -clientUrl - *url.URL for the talking to the NSMgr
 //             -...clientDialOptions - dialOptions for dialing the NSMgr
-func NewServer(name string, authzServer networkservice.NetworkServiceServer, tokenGenerator token.GeneratorFunc, clientURL *url.URL, clientDialOptions ...grpc.DialOption) endpoint.Endpoint {
+func NewServer(name string, resourcePool types.NetResourcePool, authzServer networkservice.NetworkServiceServer, tokenGenerator token.GeneratorFunc, clientURL *url.URL, clientDialOptions ...grpc.DialOption) endpoint.Endpoint {
 	rv := sriovServer{}
 	rv.Endpoint = endpoint.NewServer(
 		name,
