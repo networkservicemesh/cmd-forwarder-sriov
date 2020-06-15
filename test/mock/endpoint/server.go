@@ -89,7 +89,7 @@ func (d *nseImpl) Request(ctx context.Context, request *networkservice.NetworkSe
 				}
 			}
 
-			err = errors.New("Specified ports are not supported")
+			err = errors.New("specified ports are not supported")
 		}
 	}
 

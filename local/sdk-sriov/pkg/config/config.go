@@ -20,14 +20,17 @@ package config
 import (
 	"encoding/json"
 	"fmt"
-	"github.com/networkservicemesh/cmd-forwarder-sriov/local/sdk-sriov/pkg/types"
 	"io/ioutil"
+	"path/filepath"
+
+	"github.com/networkservicemesh/cmd-forwarder-sriov/local/sdk-sriov/pkg/types"
 )
 
+// ReadConfig read supported ports
 func ReadConfig(configFile string) (*types.ResourceConfigList, error) {
 	resources := &types.ResourceConfigList{}
 
-	rawBytes, err := ioutil.ReadFile(configFile)
+	rawBytes, err := ioutil.ReadFile(filepath.Clean(configFile))
 	if err != nil {
 		return nil, fmt.Errorf("error reading file %s, %v", configFile, err)
 	}
