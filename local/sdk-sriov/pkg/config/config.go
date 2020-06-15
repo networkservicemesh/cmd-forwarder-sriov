@@ -14,13 +14,16 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+// Package config contains types and methods for parsing forwarder's net device pool config
 package config
 
 import (
 	"fmt"
+	"io/ioutil"
+	"path/filepath"
+
 	"github.com/ghodss/yaml"
 	"github.com/sirupsen/logrus"
-	"io/ioutil"
 )
 
 // ResourceConfigList is list of ResourceConfig
@@ -36,10 +39,11 @@ type ResourceConfig struct {
 	ConnectedToPort    string `yaml:"connectedToPort"`
 }
 
+// ReadConfig reads and parses config by provided configuration file path
 func ReadConfig(configFile string) (*ResourceConfigList, error) {
 	resources := &ResourceConfigList{}
 
-	rawBytes, err := ioutil.ReadFile(configFile)
+	rawBytes, err := ioutil.ReadFile(filepath.Clean(configFile))
 	if err != nil {
 		return nil, fmt.Errorf("error reading file %s, %v", configFile, err)
 	}

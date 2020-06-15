@@ -18,8 +18,9 @@
 package sriov
 
 import (
-	"github.com/networkservicemesh/cmd-forwarder-sriov/local/sdk-sriov/pkg/types"
 	"net/url"
+
+	"github.com/networkservicemesh/cmd-forwarder-sriov/local/sdk-sriov/pkg/types"
 
 	"github.com/networkservicemesh/api/pkg/api/networkservice"
 

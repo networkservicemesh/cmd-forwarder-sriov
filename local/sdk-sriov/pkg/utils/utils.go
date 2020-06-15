@@ -14,18 +14,20 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+// Package utils contains useful helper methods for network machinery
 package utils
 
 import (
 	"bytes"
 	"fmt"
-	"github.com/sirupsen/logrus"
-	"github.com/vishvananda/netlink"
 	"io/ioutil"
 	"os"
 	"path/filepath"
 	"regexp"
 	"strconv"
+
+	"github.com/sirupsen/logrus"
+	"github.com/vishvananda/netlink"
 )
 
 var (
@@ -59,7 +61,7 @@ func IsSriovVF(pciAddr string) bool {
 // GetVFconfigured returns number of VF configured for a PF
 func GetVFconfigured(pf string) int {
 	configuredVfPath := filepath.Join(sysBusPci, pf, configuredVfFile)
-	vfs, err := ioutil.ReadFile(configuredVfPath)
+	vfs, err := ioutil.ReadFile(filepath.Clean(configuredVfPath))
 	if err != nil {
 		return 0
 	}
@@ -73,16 +75,13 @@ func GetVFconfigured(pf string) int {
 
 // IsSriovConfigured returns true if sriov_numvfs reads > 0 else false
 func IsSriovConfigured(addr string) bool {
-	if GetVFconfigured(addr) > 0 {
-		return true
-	}
-	return false
+	return GetVFconfigured(addr) > 0
 }
 
 // GetSriovVFcapacity returns SRIOV VF capacity - number of VFs that can be created for specified PF
 func GetSriovVFcapacity(pfPciAddr string) int {
 	totalVfFilePath := filepath.Join(sysBusPci, pfPciAddr, totalVfFile)
-	vfs, err := ioutil.ReadFile(totalVfFilePath)
+	vfs, err := ioutil.ReadFile(filepath.Clean(totalVfFilePath))
 	if err != nil {
 		return 0
 	}
@@ -96,7 +95,7 @@ func GetSriovVFcapacity(pfPciAddr string) int {
 
 // DeviceExists validates PciAddr given as string and checks if it exists
 func DeviceExists(pciAddr string) error {
-	//Check system pci address
+	// Check system pci address
 
 	// sysbus pci address regex
 	var validLongID = regexp.MustCompile(`^0{4}:[0-9a-f]{2}:[0-9a-f]{2}.[0-7]{1}$`)
@@ -153,12 +152,18 @@ func IsDefaultRoute(pciAddr string) (bool, error) {
 			link, err := netlink.LinkByName(ifName)
 			if err != nil {
 				logrus.Errorf("expected to get valid host interface with name %s: %q", ifName, err)
+				continue
 			}
 
 			routes, err := netlink.RouteList(link, netlink.FAMILY_V4) // IPv6 routes: all interface has at least one link local route entry
-			for _, r := range routes {
-				if r.Dst == nil {
-					logrus.Infof("excluding interface %s:  default route found: %+v", ifName, r)
+			if err != nil {
+				logrus.Errorf("expected to get valid routes for interface with name %s: %q", ifName, err)
+				continue
+			}
+
+			for idx := range routes {
+				if routes[idx].Dst == nil {
+					logrus.Infof("excluding interface %s: default route found: %+v", ifName, routes[idx])
 					return true, nil
 				}
 			}
@@ -170,7 +175,7 @@ func IsDefaultRoute(pciAddr string) (bool, error) {
 // CreateVFs initializes VFs for specified PF given number of VFs
 func CreateVFs(pfPciAddr string, vfNumber int) error {
 	configuredVfPath := filepath.Join(sysBusPci, pfPciAddr, configuredVfFile)
-	err := ioutil.WriteFile(configuredVfPath, []byte(strconv.FormatInt(int64(vfNumber), 10)), 0x666)
+	err := ioutil.WriteFile(filepath.Clean(configuredVfPath), []byte(strconv.FormatInt(int64(vfNumber), 10)), 0600)
 	if err != nil {
 		return err
 	}
@@ -193,7 +198,7 @@ func GetVFList(pfPciAddr string) (vfList []string, err error) {
 		return
 	}
 
-	//Read all VF directory and get add VF PCI addr to the vfList
+	// Read all VF directory and get add VF PCI addr to the vfList
 	for _, dir := range vfDirs {
 		dirInfo, err := os.Lstat(dir)
 		if err == nil && (dirInfo.Mode()&os.ModeSymlink != 0) {

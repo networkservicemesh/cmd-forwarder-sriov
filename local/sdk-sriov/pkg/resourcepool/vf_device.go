@@ -14,7 +14,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-package resource_pool
+package resourcepool
 
 import (
 	"github.com/networkservicemesh/cmd-forwarder-sriov/local/sdk-sriov/pkg/types"

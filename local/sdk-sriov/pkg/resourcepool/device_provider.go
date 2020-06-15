@@ -14,10 +14,12 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-package resource_pool
+// Package resourcepool contains NetResourcePool implementation
+package resourcepool
 
 import (
 	"fmt"
+
 	"github.com/networkservicemesh/cmd-forwarder-sriov/local/sdk-sriov/pkg/config"
 	"github.com/networkservicemesh/cmd-forwarder-sriov/local/sdk-sriov/pkg/types"
 	"github.com/networkservicemesh/cmd-forwarder-sriov/local/sdk-sriov/pkg/utils"

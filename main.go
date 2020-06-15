@@ -19,6 +19,7 @@ package main
 import (
 	"context"
 	"flag"
+	"fmt"
 	"net/url"
 	"os"
 	"time"
@@ -100,33 +101,21 @@ func main() {
 	}
 	logrus.Infof("SVID: %q", svid.ID)
 
-	cf := &cliFlags{}
-	flag.StringVar(&cf.configFile, "config-file", defaultConfig, "YAML device pool config file location")
-	flag.Parse()
-
-	logrus.Infof("reading configs")
-	resourceCfg, err := config.ReadConfig(cf.configFile)
+	resourceCfg, err := getResourceConfig()
 	if err != nil {
-		logrus.Fatalf("error getting config from file %v", cf.configFile)
-		return
+		logrus.Fatalf("Error getting resource config: %v", err)
 	}
 
-	if len(resourceCfg.ResourceList) < 1 {
-		logrus.Fatalf("no resource configuration; exiting")
-		return
-	}
-
-	rp := resource_pool.NewNetResourcePool()
-	err = rp.AddNetDevices(resourceCfg)
+	resourcePool := resourcepool.NewNetResourcePool()
+	err = resourcePool.AddNetDevices(resourceCfg)
 	if err != nil {
 		logrus.Fatalf("error processing devices from config: %v", err)
-		return
 	}
 
 	// XConnect Network Service Endpoint
 	endpoint := sriov.NewServer(
 		cfg.Name,
-		rp,
+		resourcePool,
 		authorize.NewServer(),
 		spiffejwt.TokenGeneratorFunc(source, cfg.MaxTokenLifetime),
 		&cfg.ConnectTo,
@@ -158,4 +147,23 @@ func exitOnErr(ctx context.Context, cancel context.CancelFunc, errCh <-chan erro
 		log.Entry(ctx).Error(err)
 		cancel()
 	}(ctx, errCh)
+}
+
+func getResourceConfig() (*config.ResourceConfigList, error) {
+	cf := &cliFlags{}
+	flag.StringVar(&cf.configFile, "config-file", defaultConfig, "YAML device pool config file location")
+	flag.Parse()
+
+	logrus.Infof("reading configs")
+	resourceCfg, err := config.ReadConfig(cf.configFile)
+
+	if err != nil {
+		return nil, fmt.Errorf("error getting config from file %v", cf.configFile)
+	}
+
+	if len(resourceCfg.ResourceList) < 1 {
+		return nil, fmt.Errorf("no resource configuration provided")
+	}
+
+	return resourceCfg, nil
 }

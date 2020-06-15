@@ -14,10 +14,12 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+// Package types contains common type interfaces
 package types
 
 import "github.com/networkservicemesh/cmd-forwarder-sriov/local/sdk-sriov/pkg/config"
 
+// NetResourcePool provides an interface for accessing net device resources
 type NetResourcePool interface {
 	AddNetDevices(cfg *config.ResourceConfigList) error
 	GetEntries() []NetResource
@@ -41,6 +43,7 @@ type PfDevice interface {
 	SetFreeVFs([]VfDevice)
 }
 
+// VfDevice provides an interface to get information about virtual function
 type VfDevice interface {
 	GetPciAddr() string
 }
