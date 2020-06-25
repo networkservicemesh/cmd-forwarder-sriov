@@ -98,6 +98,6 @@ func TestEndpoint(t *testing.T) {
 	require.NotNil(t, connection)
 	require.Equal(t, "0000:04:00:0", connection.Mechanism.Parameters[kernel.PCIAddress])
 
-	connection, err = cl.Request(ctx, testRequestBad)
+	_, err = cl.Request(ctx, testRequestBad)
 	require.NotNil(t, err)
 }
