@@ -20,12 +20,11 @@ package endpoint
 import (
 	"context"
 	"errors"
-	"math/rand"
 	"net/url"
-	"strings"
 
-	"github.com/networkservicemesh/cmd-forwarder-sriov/local/sdk-sriov/pkg/config"
-	"github.com/networkservicemesh/cmd-forwarder-sriov/local/sdk-sriov/pkg/types"
+	"github.com/networkservicemesh/api/pkg/api/networkservice/mechanisms/kernel"
+	"github.com/networkservicemesh/api/pkg/api/networkservice/mechanisms/vfio"
+	"github.com/networkservicemesh/sdk-sriov/pkg/sriov"
 
 	"github.com/golang/protobuf/ptypes/empty"
 	"github.com/networkservicemesh/api/pkg/api/networkservice"
@@ -34,10 +33,7 @@ import (
 )
 
 const (
-	availablePortsKey string = "availablePorts"
-	endpointPortKey   string = "endpointPort"
-
-	configFileName string = "configPorts.json"
+	configFileName = "config.yml"
 )
 
 type nseImpl struct {
@@ -48,54 +44,105 @@ type nseImpl struct {
 	errorChan <-chan error
 }
 
-var configList *types.ResourceConfigList
+type pciInfo struct {
+	isKernel   bool // flag for selection of corresponding mechanism
+	pciAddress string
+}
+
+var pciIndex int
+var config *sriov.Config
 
 // NewServer a new endpoint and running on grpc server
 func NewServer(ctx context.Context, listenOn *url.URL) (server *grpc.Server, errChan <-chan error) {
+	// if we havn't config file then endpoint will not start
+	var err error
+	config, err = sriov.ReadConfig(ctx, configFileName)
+	if err != nil {
+		errCh2 := make(chan error, 1)
+		errCh2 <- err
+		return nil, errCh2
+	}
+
+	pciIndex = 0
 	nse := &nseImpl{
 		listenOn: listenOn,
 		server:   grpc.NewServer(),
 	}
+
 	networkservice.RegisterNetworkServiceServer(nse.server, nse)
 
 	nse.ctx, nse.cancel = context.WithCancel(ctx)
 	nse.errorChan = grpcutils.ListenAndServe(nse.ctx, nse.listenOn, nse.server)
 
-	configList, _ = config.ReadConfig(configFileName)
-
 	return nse.server, nse.errorChan
 }
 
-func (d *nseImpl) Request(ctx context.Context, request *networkservice.NetworkServiceRequest) (*networkservice.Connection, error) {
-	request.Connection.Mechanism.Parameters = map[string]string{}
-	err := errors.New("'availablePorts' is empty")
-
-	if macListStr, exist := request.MechanismPreferences[0].Parameters[availablePortsKey]; exist {
-		macList := strings.Split(macListStr, ",")
-		err = nil
-
-		// select from received ports
-		if configList == nil {
-			randomIndex := rand.Intn(len(macList))
-			request.Connection.Mechanism.Parameters = map[string]string{endpointPortKey: macList[randomIndex]}
-		} else { // search supported port
-			for _, config := range configList.ResourceList {
-				for _, mac := range macList {
-					if config.ConnectedToPort == mac {
-						request.Connection.Mechanism.Parameters = map[string]string{endpointPortKey: mac}
-
-						return request.GetConnection(), nil
-					}
-				}
+// Search pci device in config
+// TODO add hostName as parameter for filtering
+func isSupportedPci(pciAddress string) bool {
+	for _, domain := range config.Domains {
+		for _, pciDevice := range domain.PCIDevices {
+			if pciDevice.PCIAddress == pciAddress {
+				return true
 			}
-
-			err = errors.New("specified ports are not supported")
 		}
 	}
 
-	return request.GetConnection(), err
+	return false
 }
 
-func (d *nseImpl) Close(ctx context.Context, connection *networkservice.Connection) (*empty.Empty, error) {
+// getPciListByMechanisms return list of pci address filtered by supported mechanism
+func getPciListByMechanisms(mechanisms []*networkservice.Mechanism) (list []pciInfo) {
+	var pciAddress string
+	var isKernel bool
+	for _, mech := range mechanisms {
+		pciAddress = ""
+		isKernel = true
+		switch mech.GetType() {
+		case kernel.MECHANISM:
+			pciAddress = kernel.ToMechanism(mech).GetPCIAddress()
+		case vfio.MECHANISM:
+			pciAddress = vfio.ToMechanism(mech).GetPCIAddress()
+			isKernel = false
+		}
+
+		if pciAddress != "" {
+			if isSupportedPci(pciAddress) {
+				list = append(list, pciInfo{isKernel: isKernel, pciAddress: pciAddress})
+			}
+		}
+	}
+
+	return list
+}
+
+func selectPciInfo(list []pciInfo) (info pciInfo) {
+	index := pciIndex % len(list)
+	info = list[index]
+	pciIndex++
+
+	return info
+}
+
+func (d *nseImpl) Request(_ context.Context, request *networkservice.NetworkServiceRequest) (*networkservice.Connection, error) {
+	request.Connection.Mechanism.Parameters = map[string]string{}
+
+	// get pci address list for selection
+	list := getPciListByMechanisms(request.GetMechanismPreferences())
+	if list != nil {
+		info := selectPciInfo(list)
+		key := kernel.PCIAddress
+		if !info.isKernel {
+			key = vfio.PCIAddress
+		}
+		request.Connection.Mechanism.Parameters = map[string]string{key: info.pciAddress}
+
+		return request.GetConnection(), nil
+	}
+
+	return request.GetConnection(), errors.New("specified ports are not supported")
+}
+
+func (d *nseImpl) Close(_ context.Context, _ *networkservice.Connection) (*empty.Empty, error) {
 	return &empty.Empty{}, nil
 }
