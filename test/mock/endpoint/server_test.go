@@ -100,5 +100,4 @@ func TestEndpoint(t *testing.T) {
 
 	connection, err = cl.Request(ctx, testRequestBad)
 	require.NotNil(t, err)
-	require.NotNil(t, connection)
 }
