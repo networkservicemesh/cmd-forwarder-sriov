@@ -14,7 +14,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-// Package resource provides simple device plugin server providing k8s resource
+// Package resource provides chain element providing k8s resource
 package resource
 
 import (
@@ -40,7 +40,7 @@ type resourceServer struct {
 	chains.EmptyDevicePluginServer
 }
 
-// NewServer creates a new simple device plugin server providing k8s resource
+// NewServer creates a new chain element providing k8s resource
 func NewServer(ctx context.Context, resourceName string, resourceCount int) chains.DevicePluginResourceServer {
 	return &resourceServer{
 		ctx:           ctx,

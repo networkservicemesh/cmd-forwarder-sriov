@@ -43,6 +43,6 @@ func (e EmptyDevicePluginServer) Allocate(_ context.Context, request *pluginapi.
 }
 
 // PreStartContainer stub
-func (e EmptyDevicePluginServer) PreStartContainer(ctx context.Context, request *pluginapi.PreStartContainerRequest) (*pluginapi.PreStartContainerResponse, error) {
+func (e EmptyDevicePluginServer) PreStartContainer(_ context.Context, _ *pluginapi.PreStartContainerRequest) (*pluginapi.PreStartContainerResponse, error) {
 	return &pluginapi.PreStartContainerResponse{}, nil
 }
