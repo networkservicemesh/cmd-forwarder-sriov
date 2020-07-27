@@ -23,6 +23,7 @@ import (
 	"path"
 	"time"
 
+	"github.com/fsnotify/fsnotify"
 	"github.com/google/uuid"
 	"github.com/pkg/errors"
 	"github.com/sirupsen/logrus"
@@ -91,4 +92,50 @@ func RegisterDeviceServer(ctx context.Context, request *pluginapi.RegisterReques
 	logrus.Infof(logFmt, "register done")
 
 	return nil
+}
+
+// MonitorKubeletRestart monitors if kubelet restarts so we need to reregister device plugin server
+func MonitorKubeletRestart(ctx context.Context) (chan bool, error) {
+	logFmt := "MonitorKubeletRestart: %v"
+
+	watcher, err := fsnotify.NewWatcher()
+	if err != nil {
+		logrus.Errorf(logFmt, "failed to create a watcher")
+		return nil, err
+	}
+
+	err = watcher.Add(pluginapi.DevicePluginPath)
+	if err != nil {
+		logrus.Errorf(logFmt, "failed to watch on "+pluginapi.DevicePluginPath)
+		return nil, err
+	}
+
+	monitorCh := make(chan bool, 1)
+	go func() {
+		defer func() { _ = watcher.Close() }()
+		defer close(monitorCh)
+		for {
+			select {
+			case <-ctx.Done():
+				logrus.Infof(logFmt, "end monitoring")
+				return
+			case event, ok := <-watcher.Events:
+				if !ok {
+					logrus.Infof(logFmt, "watcher has been closed")
+					return
+				}
+				if event.Name == pluginapi.KubeletSocket && event.Op&fsnotify.Create == fsnotify.Create {
+					logrus.Warnf(logFmt, "kubelet restarts")
+					monitorCh <- true
+				}
+			case err, ok := <-watcher.Errors:
+				if !ok {
+					logrus.Infof(logFmt, "watcher has been closed")
+					return
+				}
+				logrus.Warnf(logFmt, err)
+			}
+		}
+	}()
+	return monitorCh, nil
 }
