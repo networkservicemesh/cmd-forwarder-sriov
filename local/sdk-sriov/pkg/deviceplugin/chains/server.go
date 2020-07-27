@@ -65,16 +65,23 @@ type DevicePluginServerChain interface {
 }
 
 type serverChain struct {
-	resourceName string
-	servers      []DevicePluginServer
-	stop         context.CancelFunc
+	resourceName     string
+	servers          []DevicePluginServer
+	devicesByServers map[DevicePluginServer][]*pluginapi.Device
+	stop             context.CancelFunc
+}
+
+type serverListAndWatchResponse struct {
+	server  DevicePluginServer
+	devices []*pluginapi.Device
 }
 
 // NewDevicePluginServerChain creates a new DevicePluginServer chain from the given servers
 func NewDevicePluginServerChain(resourceServer DevicePluginResourceServer, servers ...DevicePluginServer) DevicePluginServerChain {
 	return &serverChain{
-		resourceName: resourceServer.ResourceName(),
-		servers:      append(servers, resourceServer),
+		resourceName:     resourceServer.ResourceName(),
+		servers:          append(servers, resourceServer),
+		devicesByServers: map[DevicePluginServer][]*pluginapi.Device{},
 	}
 }
 
@@ -127,13 +134,12 @@ func (sc *serverChain) GetDevicePluginOptions(ctx context.Context, _ *pluginapi.
 }
 
 func (sc *serverChain) ListAndWatch(_ *pluginapi.Empty, server pluginapi.DevicePlugin_ListAndWatchServer) error {
-	response := &pluginapi.ListAndWatchResponse{
-		Devices: []*pluginapi.Device{},
-	}
+	response := &pluginapi.ListAndWatchResponse{}
 
-	respCh := make(chan *pluginapi.ListAndWatchResponse)
+	respCh := make(chan *serverListAndWatchResponse)
 	for i := range sc.servers {
-		if err := sc.servers[i].ListAndWatch(respCh); err != nil {
+		server := sc.servers[i]
+		if err := server.ListAndWatch(wrapResponseChannel(respCh, server)); err != nil {
 			return err
 		}
 	}
@@ -144,7 +150,7 @@ func (sc *serverChain) ListAndWatch(_ *pluginapi.Empty, server pluginapi.DeviceP
 			if resp == nil {
 				return
 			}
-			updateListAndWatchResponse(response, resp)
+			response.Devices = sc.updateDevices(resp.server, resp.devices)
 			if err := server.Send(response); err != nil {
 				close(respCh)
 				return
@@ -154,17 +160,32 @@ func (sc *serverChain) ListAndWatch(_ *pluginapi.Empty, server pluginapi.DeviceP
 	return nil
 }
 
-func updateListAndWatchResponse(old, update *pluginapi.ListAndWatchResponse) {
-devices:
-	for k := range update.Devices {
-		for j := range old.Devices {
-			if old.Devices[j].ID == update.Devices[k].ID {
-				old.Devices[j] = update.Devices[k]
-				continue devices
+func wrapResponseChannel(respCh chan *serverListAndWatchResponse, server DevicePluginServer) chan *pluginapi.ListAndWatchResponse {
+	serverRespCh := make(chan *pluginapi.ListAndWatchResponse)
+	go func() {
+		for {
+			resp := <-serverRespCh
+			if resp == nil {
+				close(respCh)
+				return
+			}
+			respCh <- &serverListAndWatchResponse{
+				server:  server,
+				devices: resp.Devices,
 			}
 		}
-		old.Devices = append(old.Devices, update.Devices[k])
+	}()
+	return serverRespCh
+}
+
+func (sc *serverChain) updateDevices(server DevicePluginServer, serverDevices []*pluginapi.Device) []*pluginapi.Device {
+	sc.devicesByServers[server] = serverDevices
+
+	var devices []*pluginapi.Device
+	for _, servDevices := range sc.devicesByServers {
+		devices = append(devices, servDevices...)
 	}
+	return devices
 }
 
 func (sc *serverChain) Allocate(ctx context.Context, request *pluginapi.AllocateRequest) (*pluginapi.AllocateResponse, error) {
