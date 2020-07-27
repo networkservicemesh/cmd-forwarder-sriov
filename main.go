@@ -39,6 +39,7 @@ import (
 	"github.com/networkservicemesh/sdk/pkg/tools/log"
 	"github.com/networkservicemesh/sdk/pkg/tools/signalctx"
 
+	"github.com/networkservicemesh/cmd-forwarder-sriov/local/sdk-sriov/pkg/deviceplugin"
 	"github.com/networkservicemesh/cmd-forwarder-sriov/local/sdk-sriov/pkg/networkservice/chains/sriov"
 )
 
@@ -78,6 +79,11 @@ func main() {
 
 	log.Entry(ctx).Infof("Config: %#v", config)
 
+	// Start device plugin server
+	if err := startDevicePluginServer(ctx, config); err != nil {
+		logrus.Fatalf("failed to start a device plugin server: %+v", err)
+	}
+
 	// Get a X509Source
 	source, err := workloadapi.NewX509Source(ctx)
 	if err != nil {
@@ -108,6 +114,37 @@ func main() {
 	log.Entry(ctx).Infof("Startup completed in %v", time.Since(starttime))
 
 	<-ctx.Done()
+}
+
+func startDevicePluginServer(ctx context.Context, config *Config) error {
+	server := deviceplugin.NewServer(config.Name)
+	if err := server.Start(ctx); err != nil {
+		return err
+	}
+
+	kubeletMonitorCh, err := deviceplugin.MonitorKubeletRestart(ctx)
+	if err != nil {
+		return err
+	}
+
+	go func() {
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case _, ok := <-kubeletMonitorCh:
+				if !ok {
+					return
+				}
+			}
+			_ = server.Stop()
+			if err := server.Start(ctx); err != nil {
+				log.Entry(ctx).Fatalf("Failed to restart device plugin server: %v", err)
+			}
+		}
+	}()
+
+	return nil
 }
 
 func exitOnErr(ctx context.Context, cancel context.CancelFunc, errCh <-chan error) {
