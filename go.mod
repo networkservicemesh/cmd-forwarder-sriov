@@ -5,6 +5,7 @@ go 1.14
 require (
 	github.com/antonfisher/nested-logrus-formatter v1.1.0
 	github.com/edwarnicke/exechelper v1.0.1
+	github.com/golang/mock v1.4.3
 	github.com/google/uuid v1.1.1
 	github.com/imdario/mergo v0.3.10
 	github.com/kelseyhightower/envconfig v1.4.0
