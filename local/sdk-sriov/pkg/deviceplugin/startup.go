@@ -50,10 +50,12 @@ func StartDeviceServer(ctx context.Context, deviceServer pluginapi.DevicePluginS
 
 	grpcServer := grpc.NewServer()
 	pluginapi.RegisterDevicePluginServer(grpcServer, deviceServer)
-	errCh := grpcutils.ListenAndServe(ctx, grpcutils.AddressToURL(socketPath), grpcServer)
+
+	socketURL := grpcutils.AddressToURL(socketPath)
+	errCh := grpcutils.ListenAndServe(ctx, socketURL, grpcServer)
 	go func() {
 		if err := <-errCh; err != nil {
-			logrus.Errorf(logFmt, fmt.Sprint("failed to start device plugin grpc server ", socketPath, err))
+			logrus.Errorf(logFmt, fmt.Sprint("failed to start device plugin grpc server at ", socket, err))
 		}
 	}()
 
@@ -61,7 +63,7 @@ func StartDeviceServer(ctx context.Context, deviceServer pluginapi.DevicePluginS
 	defer cancel()
 
 	logrus.Infof(logFmt, "check device server operational")
-	conn, err := grpc.DialContext(dialCtx, socketPath.String(), grpc.WithBlock())
+	conn, err := grpc.DialContext(dialCtx, socketURL.String(), grpc.WithBlock(), grpc.WithInsecure())
 	if err != nil {
 		logrus.Errorf(logFmt, err)
 		return "", err
@@ -77,8 +79,8 @@ func StartDeviceServer(ctx context.Context, deviceServer pluginapi.DevicePluginS
 func RegisterDeviceServer(ctx context.Context, request *pluginapi.RegisterRequest) error {
 	logFmt := "RegisterDeviceServer: %v"
 
-	socketPath := tools.SocketPath(path.Join(pluginapi.DevicePluginPath, request.Endpoint))
-	conn, err := grpc.DialContext(ctx, socketPath.String())
+	socketURL := grpcutils.AddressToURL(tools.SocketPath(pluginapi.KubeletSocket))
+	conn, err := grpc.DialContext(ctx, socketURL.String(), grpc.WithInsecure())
 	if err != nil {
 		return errors.Wrap(err, fmt.Sprintf(logFmt, "cannot connect to kubelet service"))
 	}
@@ -98,13 +100,7 @@ func RegisterDeviceServer(ctx context.Context, request *pluginapi.RegisterReques
 func MonitorKubeletRestart(ctx context.Context) (chan bool, error) {
 	logFmt := "MonitorKubeletRestart: %v"
 
-	watcher, err := fsnotify.NewWatcher()
-	if err != nil {
-		logrus.Errorf(logFmt, "failed to create a watcher")
-		return nil, err
-	}
-
-	err = watcher.Add(pluginapi.DevicePluginPath)
+	watcher, err := tools.WatchOn(pluginapi.DevicePluginPath)
 	if err != nil {
 		logrus.Errorf(logFmt, "failed to watch on "+pluginapi.DevicePluginPath)
 		return nil, err

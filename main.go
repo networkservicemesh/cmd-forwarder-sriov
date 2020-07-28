@@ -49,6 +49,9 @@ type Config struct {
 	ListenOn         url.URL       `default:"unix:///listen.on.socket" desc:"url to listen on" split_words:"true"`
 	ConnectTo        url.URL       `default:"unix:///connect.to.socket" desc:"url to connect to" split_words:"true"`
 	MaxTokenLifetime time.Duration `default:"24h" desc:"maximum lifetime of tokens" split_words:"true"`
+	ResourceCount    int           `default:"10" desc:"device plugin resource count"`
+	HostBaseDir      string        `default:"/networkservicemesh/sriov" desc:"host base directory for clients mounts"`
+	HostPathEnv      string        `default:"SRIOV_HOST_PATH" desc:"env to get mounting point in host FS"`
 }
 
 func main() {
@@ -117,7 +120,7 @@ func main() {
 }
 
 func startDevicePluginServer(ctx context.Context, config *Config) error {
-	server := deviceplugin.NewServer(config.Name)
+	server := deviceplugin.NewServer(config.Name, config.ResourceCount, config.HostBaseDir, config.HostPathEnv)
 	if err := server.Start(ctx); err != nil {
 		return err
 	}

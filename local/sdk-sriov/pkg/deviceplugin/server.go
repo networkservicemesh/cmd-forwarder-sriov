@@ -29,12 +29,9 @@ import (
 )
 
 const (
-	resourceCount      = 10
+	resourceNamePrefix = "networkservicemesh.io/"
 	kubeletNotifyDelay = 30 * time.Second
-
-	vfioDir     = "/sys/dev/vfio"
-	hostBaseDir = "/networkservicemesh/sriov/vfio"
-	hostPathEnv = "SRIOV_HOST_PATH"
+	vfioDir            = "/dev/vfio"
 )
 
 // Server is a SR-IOV forwarder device plugin server
@@ -46,31 +43,36 @@ type Server interface {
 }
 
 type devicePluginServer struct {
-	resourceName string
-	ctx          context.Context
-	stop         context.CancelFunc
+	resourceName  string
+	resourceCount int
+	hostBaseDir   string
+	hostPathEnv   string
+	ctx           context.Context
+	stop          context.CancelFunc
 }
 
 // NewServer creates a new SR-IOV forwarder device plugin server
-func NewServer(resourceName string) Server {
+func NewServer(resourceName string, resourceCount int, hostBaseDir, hostPathEnv string) Server {
 	return &devicePluginServer{
-		resourceName: resourceName,
+		resourceName:  resourceNamePrefix + resourceName,
+		resourceCount: resourceCount,
+		hostBaseDir:   hostBaseDir,
+		hostPathEnv:   hostPathEnv,
 	}
 }
 
 func (s *devicePluginServer) Start(parentCtx context.Context) error {
 	logFmt := "devicePluginServer(Start): %v"
 
-	var ctx context.Context
 	s.ctx, s.stop = context.WithCancel(parentCtx)
 
-	socket, err := StartDeviceServer(ctx, s)
+	socket, err := StartDeviceServer(s.ctx, s)
 	if err != nil {
 		logrus.Errorf(logFmt, "error starting server")
 		return err
 	}
 
-	if err := RegisterDeviceServer(ctx, &pluginapi.RegisterRequest{
+	if err := RegisterDeviceServer(s.ctx, &pluginapi.RegisterRequest{
 		Version:      pluginapi.Version,
 		Endpoint:     socket,
 		ResourceName: s.resourceName,
@@ -98,31 +100,27 @@ func (s *devicePluginServer) ListAndWatch(_ *pluginapi.Empty, server pluginapi.D
 	logFmt := "devicePluginServer(ListAndWatch): %v"
 
 	resp := &pluginapi.ListAndWatchResponse{
-		Devices: make([]*pluginapi.Device, resourceCount),
+		Devices: make([]*pluginapi.Device, s.resourceCount),
 	}
-	for i := 0; i < resourceCount; i++ {
+	for i := 0; i < s.resourceCount; i++ {
 		resp.Devices[i] = &pluginapi.Device{
 			ID:     fmt.Sprintf("%s/%v", s.resourceName, i),
 			Health: pluginapi.Healthy,
 		}
 	}
 
-	go func() {
-		for {
-			select {
-			case <-s.ctx.Done():
-				logrus.Infof(logFmt, "server stopped")
-				return
-			case <-time.After(kubeletNotifyDelay):
-				if err := server.Send(resp); err != nil {
-					logrus.Errorf(logFmt, "server unavailable")
-					return
-				}
-			}
+	for {
+		if err := server.Send(resp); err != nil {
+			logrus.Errorf(logFmt, "server unavailable")
+			return err
 		}
-	}()
-
-	return nil
+		select {
+		case <-s.ctx.Done():
+			logrus.Infof(logFmt, "server stopped")
+			return nil
+		case <-time.After(kubeletNotifyDelay):
+		}
+	}
 }
 
 func (s *devicePluginServer) Allocate(ctx context.Context, request *pluginapi.AllocateRequest) (*pluginapi.AllocateResponse, error) {
@@ -131,10 +129,10 @@ func (s *devicePluginServer) Allocate(ctx context.Context, request *pluginapi.Al
 	}
 
 	for i := range request.ContainerRequests {
-		hostPath := path.Join(hostBaseDir, uuid.New().String())
+		hostPath := path.Join(s.hostBaseDir, uuid.New().String())
 		response.ContainerResponses[i] = &pluginapi.ContainerAllocateResponse{
 			Envs: map[string]string{
-				hostPathEnv: hostPath,
+				s.hostPathEnv: hostPath,
 			},
 			Mounts: []*pluginapi.Mount{{
 				ContainerPath: vfioDir,
