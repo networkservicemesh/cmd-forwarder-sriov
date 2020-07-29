@@ -42,7 +42,6 @@ type Server interface {
 	Stop() error
 }
 
-// TODO - add unit tests
 type devicePluginServer struct {
 	resourceName  string
 	resourceCount int
