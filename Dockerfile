@@ -19,4 +19,8 @@ COPY . .
 RUN go build -o /bin/forwarder .
 
 FROM build as test
-CMD go test -test.v ./...
+COPY ./test ./test
+ENV NSM_DEVICEPLUGINPATH=/build/device-plugins
+RUN go build -o kubelet_stub ./test/applications/kubelet
+RUN mkdir -p ./device-plugins
+CMD ["/bin/bash", "-c", "./kubelet_stub > kubelet_stub.out & go test -test.v ./..."]

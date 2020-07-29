@@ -37,11 +37,12 @@ const (
 // Server is a SR-IOV forwarder device plugin server
 type Server interface {
 	// Start starts server with the given context
-	Start(ctx context.Context) error
+	Start(ctx context.Context, manager Manager) error
 	// Stop stops server
 	Stop() error
 }
 
+// TODO - add unit tests
 type devicePluginServer struct {
 	resourceName  string
 	resourceCount int
@@ -61,18 +62,18 @@ func NewServer(resourceName string, resourceCount int, hostBaseDir, hostPathEnv 
 	}
 }
 
-func (s *devicePluginServer) Start(parentCtx context.Context) error {
+func (s *devicePluginServer) Start(parentCtx context.Context, manager Manager) error {
 	logFmt := "devicePluginServer(Start): %v"
 
 	s.ctx, s.stop = context.WithCancel(parentCtx)
 
-	socket, err := StartDeviceServer(s.ctx, s)
+	socket, err := manager.StartDeviceServer(s.ctx, s)
 	if err != nil {
 		logrus.Errorf(logFmt, "error starting server")
 		return err
 	}
 
-	if err := RegisterDeviceServer(s.ctx, &pluginapi.RegisterRequest{
+	if err := manager.RegisterDeviceServer(s.ctx, &pluginapi.RegisterRequest{
 		Version:      pluginapi.Version,
 		Endpoint:     socket,
 		ResourceName: s.resourceName,
@@ -123,7 +124,7 @@ func (s *devicePluginServer) ListAndWatch(_ *pluginapi.Empty, server pluginapi.D
 	}
 }
 
-func (s *devicePluginServer) Allocate(ctx context.Context, request *pluginapi.AllocateRequest) (*pluginapi.AllocateResponse, error) {
+func (s *devicePluginServer) Allocate(_ context.Context, request *pluginapi.AllocateRequest) (*pluginapi.AllocateResponse, error) {
 	response := &pluginapi.AllocateResponse{
 		ContainerResponses: make([]*pluginapi.ContainerAllocateResponse, len(request.ContainerRequests)),
 	}

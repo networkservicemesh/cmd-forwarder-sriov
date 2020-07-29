@@ -52,6 +52,7 @@ type Config struct {
 	ResourceCount    int           `default:"10" desc:"device plugin resource count"`
 	HostBaseDir      string        `default:"/networkservicemesh/sriov" desc:"host base directory for clients mounts"`
 	HostPathEnv      string        `default:"SRIOV_HOST_PATH" desc:"env to get mounting point in host FS"`
+	DevicePluginPath string        `default:"/var/lib/kubelet/device-plugins/" desc:"path to the device plugin directory"`
 }
 
 func main() {
@@ -120,12 +121,14 @@ func main() {
 }
 
 func startDevicePluginServer(ctx context.Context, config *Config) error {
+	manager := deviceplugin.NewManager(config.DevicePluginPath)
+
 	server := deviceplugin.NewServer(config.Name, config.ResourceCount, config.HostBaseDir, config.HostPathEnv)
-	if err := server.Start(ctx); err != nil {
+	if err := server.Start(ctx, manager); err != nil {
 		return err
 	}
 
-	kubeletMonitorCh, err := deviceplugin.MonitorKubeletRestart(ctx)
+	kubeletMonitorCh, err := manager.MonitorKubeletRestart(ctx)
 	if err != nil {
 		return err
 	}
@@ -141,7 +144,7 @@ func startDevicePluginServer(ctx context.Context, config *Config) error {
 				}
 			}
 			_ = server.Stop()
-			if err := server.Start(ctx); err != nil {
+			if err := server.Start(ctx, manager); err != nil {
 				log.Entry(ctx).Fatalf("Failed to restart device plugin server: %v", err)
 			}
 		}

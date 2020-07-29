@@ -35,14 +35,39 @@ import (
 	"github.com/networkservicemesh/cmd-forwarder-sriov/local/sdk-sriov/pkg/tools"
 )
 
-const dialTimeoutDefault = 15 * time.Second
+const (
+	dialTimeoutDefault = 15 * time.Second
+	kubeletSocket      = "kubelet.sock"
+)
 
-// StartDeviceServer starts device plugin server and returns the name of the corresponding unix socket
-func StartDeviceServer(ctx context.Context, deviceServer pluginapi.DevicePluginServer) (string, error) {
+// Manager provides tools to setup device plugin server
+type Manager interface {
+	// StartDeviceServer starts device plugin server and returns the name of the corresponding unix socket
+	StartDeviceServer(ctx context.Context, deviceServer pluginapi.DevicePluginServer) (string, error)
+	// RegisterDeviceServer registers device plugin server using the given request
+	RegisterDeviceServer(ctx context.Context, request *pluginapi.RegisterRequest) error
+	// MonitorKubeletRestart monitors if kubelet restarts so we need to reregister device plugin server
+	MonitorKubeletRestart(ctx context.Context) (chan bool, error)
+}
+
+type devicePluginManager struct {
+	devicePluginPath string
+	kubeletSocket    string
+}
+
+// NewManager creates a new device plugin manager
+func NewManager(devicePluginPath string) Manager {
+	return &devicePluginManager{
+		devicePluginPath: devicePluginPath,
+		kubeletSocket:    path.Join(devicePluginPath, kubeletSocket),
+	}
+}
+
+func (dpm *devicePluginManager) StartDeviceServer(ctx context.Context, deviceServer pluginapi.DevicePluginServer) (string, error) {
 	logFmt := "StartDeviceServer: %v"
 
 	socket := uuid.New().String()
-	socketPath := tools.SocketPath(path.Join(pluginapi.DevicePluginPath, socket))
+	socketPath := tools.SocketPath(path.Join(dpm.devicePluginPath, socket))
 	logrus.Infof(logFmt, fmt.Sprint("socket = ", socket))
 	if err := tools.SocketCleanup(socketPath); err != nil {
 		return "", err
@@ -75,11 +100,10 @@ func StartDeviceServer(ctx context.Context, deviceServer pluginapi.DevicePluginS
 	return socket, nil
 }
 
-// RegisterDeviceServer registers device plugin server using the given request
-func RegisterDeviceServer(ctx context.Context, request *pluginapi.RegisterRequest) error {
+func (dpm *devicePluginManager) RegisterDeviceServer(ctx context.Context, request *pluginapi.RegisterRequest) error {
 	logFmt := "RegisterDeviceServer: %v"
 
-	socketURL := grpcutils.AddressToURL(tools.SocketPath(pluginapi.KubeletSocket))
+	socketURL := grpcutils.AddressToURL(tools.SocketPath(dpm.kubeletSocket))
 	conn, err := grpc.DialContext(ctx, socketURL.String(), grpc.WithInsecure())
 	if err != nil {
 		return errors.Wrap(err, fmt.Sprintf(logFmt, "cannot connect to kubelet service"))
@@ -96,13 +120,12 @@ func RegisterDeviceServer(ctx context.Context, request *pluginapi.RegisterReques
 	return nil
 }
 
-// MonitorKubeletRestart monitors if kubelet restarts so we need to reregister device plugin server
-func MonitorKubeletRestart(ctx context.Context) (chan bool, error) {
+func (dpm *devicePluginManager) MonitorKubeletRestart(ctx context.Context) (chan bool, error) {
 	logFmt := "MonitorKubeletRestart: %v"
 
-	watcher, err := tools.WatchOn(pluginapi.DevicePluginPath)
+	watcher, err := tools.WatchOn(dpm.devicePluginPath)
 	if err != nil {
-		logrus.Errorf(logFmt, "failed to watch on "+pluginapi.DevicePluginPath)
+		logrus.Errorf(logFmt, "failed to watch on "+dpm.devicePluginPath)
 		return nil, err
 	}
 
@@ -120,7 +143,7 @@ func MonitorKubeletRestart(ctx context.Context) (chan bool, error) {
 					logrus.Infof(logFmt, "watcher has been closed")
 					return
 				}
-				if event.Name == pluginapi.KubeletSocket && event.Op&fsnotify.Create == fsnotify.Create {
+				if event.Name == dpm.kubeletSocket && event.Op&fsnotify.Create == fsnotify.Create {
 					logrus.Warnf(logFmt, "kubelet restarts")
 					monitorCh <- true
 				}
