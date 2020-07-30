@@ -80,7 +80,7 @@ func (dpm *devicePluginManager) StartDeviceServer(ctx context.Context, deviceSer
 	errCh := grpcutils.ListenAndServe(ctx, socketURL, grpcServer)
 	go func() {
 		if err := <-errCh; err != nil {
-			logrus.Errorf(logFmt, fmt.Sprint("failed to start device plugin grpc server at ", socket, err))
+			logrus.Errorf(logFmt, fmt.Sprint("error in device plugin grpc server at ", socket, err))
 		}
 	}()
 
