@@ -23,7 +23,6 @@ import (
 	"time"
 
 	"github.com/google/uuid"
-	"github.com/pkg/errors"
 	"github.com/sirupsen/logrus"
 	pluginapi "k8s.io/kubelet/pkg/apis/deviceplugin/v1beta1"
 )
@@ -34,10 +33,12 @@ const (
 	vfioDir            = "/dev/vfio"
 )
 
-// Server is a SR-IOV forwarder device plugin server
-type Server interface {
-	// Start starts server with the given context
-	Start(ctx context.Context, manager Manager) error
+// ServerConfig is a struct for configuring device plugin server
+type ServerConfig struct {
+	ResourceName  string
+	ResourceCount int
+	HostBaseDir   string
+	HostPathEnv   string
 }
 
 type devicePluginServer struct {
@@ -48,23 +49,17 @@ type devicePluginServer struct {
 	ctx           context.Context
 }
 
-// NewServer creates a new SR-IOV forwarder device plugin server
-func NewServer(resourceName string, resourceCount int, hostBaseDir, hostPathEnv string) Server {
-	return &devicePluginServer{
-		resourceName:  resourceNamePrefix + resourceName,
-		resourceCount: resourceCount,
-		hostBaseDir:   hostBaseDir,
-		hostPathEnv:   hostPathEnv,
-	}
-}
+// StartServer creates a new SR-IOV forwarder device plugin server and starts it
+func StartServer(ctx context.Context, config *ServerConfig, manager Manager) error {
+	logFmt := "StartServer: %v"
 
-func (s *devicePluginServer) Start(ctx context.Context, manager Manager) error {
-	logFmt := "devicePluginServer(start): %v"
-
-	if s.ctx != nil {
-		return errors.New("devicePluginServer is already running")
+	s := &devicePluginServer{
+		resourceName:  resourceNamePrefix + config.ResourceName,
+		resourceCount: config.ResourceCount,
+		hostBaseDir:   config.HostBaseDir,
+		hostPathEnv:   config.HostPathEnv,
+		ctx:           ctx,
 	}
-	s.ctx = ctx
 
 	logrus.Infof(logFmt, "starting server")
 	socket, err := manager.StartDeviceServer(s.ctx, s)

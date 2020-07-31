@@ -85,8 +85,12 @@ func main() {
 
 	// Start device plugin server
 	manager := deviceplugin.NewManager(config.DevicePluginPath)
-	devicePluginServer := deviceplugin.NewServer(config.Name, config.ResourceCount, config.HostBaseDir, config.HostPathEnv)
-	if err := devicePluginServer.Start(ctx, manager); err != nil {
+	if err := deviceplugin.StartServer(ctx, &deviceplugin.ServerConfig{
+		ResourceName:  config.Name,
+		ResourceCount: config.ResourceCount,
+		HostBaseDir:   config.HostBaseDir,
+		HostPathEnv:   config.HostPathEnv,
+	}, manager); err != nil {
 		logrus.Fatalf("failed to start a device plugin server: %+v", err)
 	}
 

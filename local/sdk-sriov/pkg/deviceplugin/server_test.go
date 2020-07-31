@@ -36,8 +36,6 @@ const (
 )
 
 func TestDevicePluginServer_Start(t *testing.T) {
-	dps := NewServer(resourceName, resourceCount, hostBaseDir, hostPathEnv)
-
 	m := &manager{}
 	m.On("StartDeviceServer", mock.Anything, mock.Anything).Return(socket, nil)
 	m.On("RegisterDeviceServer", mock.Anything, mock.Anything).Return(nil)
@@ -48,10 +46,15 @@ func TestDevicePluginServer_Start(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	err := dps.Start(ctx, m)
+	err := StartServer(ctx, &ServerConfig{
+		ResourceName:  resourceName,
+		ResourceCount: resourceCount,
+		HostBaseDir:   hostBaseDir,
+		HostPathEnv:   hostPathEnv,
+	}, m)
 	assert.Nil(t, err)
 
-	m.AssertCalled(t, "StartDeviceServer", ctx, dps)
+	m.AssertCalled(t, "StartDeviceServer", ctx, mock.Anything)
 	m.AssertCalled(t, "RegisterDeviceServer", ctx, mock.MatchedBy(func(request *pluginapi.RegisterRequest) bool {
 		return request.Endpoint == socket && request.ResourceName == resourceNamePrefix+resourceName
 	}))
@@ -65,8 +68,13 @@ func TestDevicePluginServer_Start(t *testing.T) {
 }
 
 func TestDevicePluginServer_ListAndWatch(t *testing.T) {
-	dps := NewServer(resourceName, resourceCount, hostBaseDir, hostPathEnv).(*devicePluginServer)
-	dps.ctx = context.TODO()
+	dps := &devicePluginServer{
+		resourceName:  resourceName,
+		resourceCount: resourceCount,
+		hostBaseDir:   hostBaseDir,
+		hostPathEnv:   hostPathEnv,
+		ctx:           context.TODO(),
+	}
 
 	respCh := make(chan *pluginapi.ListAndWatchResponse)
 	lws := &listAndWatchServer{
@@ -95,7 +103,13 @@ func TestDevicePluginServer_ListAndWatch(t *testing.T) {
 }
 
 func TestDevicePluginServer_Allocate(t *testing.T) {
-	dps := NewServer(resourceName, resourceCount, hostBaseDir, hostPathEnv).(*devicePluginServer)
+	dps := &devicePluginServer{
+		resourceName:  resourceName,
+		resourceCount: resourceCount,
+		hostBaseDir:   hostBaseDir,
+		hostPathEnv:   hostPathEnv,
+		ctx:           context.TODO(),
+	}
 
 	response, err := dps.Allocate(context.TODO(), &pluginapi.AllocateRequest{
 		ContainerRequests: make([]*pluginapi.ContainerAllocateRequest, containersCount),
