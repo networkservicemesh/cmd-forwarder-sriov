@@ -84,7 +84,9 @@ func main() {
 	log.Entry(ctx).Infof("Config: %#v", config)
 
 	// Start device plugin server
-	if err := startDevicePluginServer(ctx, config); err != nil {
+	manager := deviceplugin.NewManager(config.DevicePluginPath)
+	devicePluginServer := deviceplugin.NewServer(config.Name, config.ResourceCount, config.HostBaseDir, config.HostPathEnv)
+	if err := devicePluginServer.Start(ctx, manager); err != nil {
 		logrus.Fatalf("failed to start a device plugin server: %+v", err)
 	}
 
@@ -118,39 +120,6 @@ func main() {
 	log.Entry(ctx).Infof("Startup completed in %v", time.Since(starttime))
 
 	<-ctx.Done()
-}
-
-func startDevicePluginServer(ctx context.Context, config *Config) error {
-	manager := deviceplugin.NewManager(config.DevicePluginPath)
-
-	server := deviceplugin.NewServer(config.Name, config.ResourceCount, config.HostBaseDir, config.HostPathEnv)
-	if err := server.Start(ctx, manager); err != nil {
-		return err
-	}
-
-	kubeletMonitorCh, err := manager.MonitorKubeletRestart(ctx)
-	if err != nil {
-		return err
-	}
-
-	go func() {
-		for {
-			select {
-			case <-ctx.Done():
-				return
-			case _, ok := <-kubeletMonitorCh:
-				if !ok {
-					return
-				}
-			}
-			_ = server.Stop()
-			if err := server.Start(ctx, manager); err != nil {
-				log.Entry(ctx).Fatalf("Failed to restart device plugin server: %v", err)
-			}
-		}
-	}()
-
-	return nil
 }
 
 func exitOnErr(ctx context.Context, cancel context.CancelFunc, errCh <-chan error) {

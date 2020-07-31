@@ -42,13 +42,26 @@ func TestDevicePluginServer_Start(t *testing.T) {
 	m.On("StartDeviceServer", mock.Anything, mock.Anything).Return(socket, nil)
 	m.On("RegisterDeviceServer", mock.Anything, mock.Anything).Return(nil)
 
-	err := dps.Start(context.TODO(), m)
+	resetCh := make(chan bool)
+	m.On("MonitorKubeletRestart", mock.Anything).Return(resetCh, nil)
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	err := dps.Start(ctx, m)
 	assert.Nil(t, err)
 
-	m.AssertCalled(t, "StartDeviceServer", mock.Anything, dps)
-	m.AssertCalled(t, "RegisterDeviceServer", mock.Anything, mock.MatchedBy(func(request *pluginapi.RegisterRequest) bool {
+	m.AssertCalled(t, "StartDeviceServer", ctx, dps)
+	m.AssertCalled(t, "RegisterDeviceServer", ctx, mock.MatchedBy(func(request *pluginapi.RegisterRequest) bool {
 		return request.Endpoint == socket && request.ResourceName == resourceNamePrefix+resourceName
 	}))
+
+	select {
+	case resetCh <- true:
+		m.assertNumberOfCallsEventually(t, "RegisterDeviceServer", 2)
+	case <-time.After(10 * time.Second):
+		assert.Fail(t, "no re register called")
+	}
 }
 
 func TestDevicePluginServer_ListAndWatch(t *testing.T) {
@@ -114,8 +127,6 @@ func testContainerResponse(container *pluginapi.ContainerAllocateResponse) bool 
 
 type manager struct {
 	mock.Mock
-
-	Manager
 }
 
 func (m *manager) StartDeviceServer(ctx context.Context, deviceServer pluginapi.DevicePluginServer) (string, error) {
@@ -126,6 +137,23 @@ func (m *manager) StartDeviceServer(ctx context.Context, deviceServer pluginapi.
 func (m *manager) RegisterDeviceServer(ctx context.Context, request *pluginapi.RegisterRequest) error {
 	res := m.Called(ctx, request)
 	return res.Error(0)
+}
+
+func (m *manager) MonitorKubeletRestart(ctx context.Context) (chan bool, error) {
+	res := m.Called(ctx)
+	return res.Get(0).(chan bool), res.Error(1)
+}
+
+func (m *manager) assertNumberOfCallsEventually(t *testing.T, methodName string, expectedCalls int) {
+	assert.Eventually(t, func() bool {
+		var count int
+		for i := range m.Calls {
+			if m.Calls[i].Method == methodName {
+				count++
+			}
+		}
+		return count == expectedCalls
+	}, 10*time.Second, 10*time.Millisecond)
 }
 
 type listAndWatchServer struct {

@@ -38,8 +38,6 @@ const (
 type Server interface {
 	// Start starts server with the given context
 	Start(ctx context.Context, manager Manager) error
-	// Stop stops server
-	Stop() error
 }
 
 type devicePluginServer struct {
@@ -48,7 +46,6 @@ type devicePluginServer struct {
 	hostBaseDir   string
 	hostPathEnv   string
 	ctx           context.Context
-	stop          context.CancelFunc
 }
 
 // NewServer creates a new SR-IOV forwarder device plugin server
@@ -61,35 +58,60 @@ func NewServer(resourceName string, resourceCount int, hostBaseDir, hostPathEnv 
 	}
 }
 
-func (s *devicePluginServer) Start(parentCtx context.Context, manager Manager) error {
-	logFmt := "devicePluginServer(Start): %v"
+func (s *devicePluginServer) Start(ctx context.Context, manager Manager) error {
+	logFmt := "devicePluginServer(start): %v"
 
-	s.ctx, s.stop = context.WithCancel(parentCtx)
+	if s.ctx != nil {
+		return errors.New("devicePluginServer is already running")
+	}
+	s.ctx = ctx
 
+	logrus.Infof(logFmt, "starting server")
 	socket, err := manager.StartDeviceServer(s.ctx, s)
 	if err != nil {
 		logrus.Errorf(logFmt, "error starting server")
 		return err
 	}
 
-	if err := manager.RegisterDeviceServer(s.ctx, &pluginapi.RegisterRequest{
-		Version:      pluginapi.Version,
-		Endpoint:     socket,
-		ResourceName: s.resourceName,
-	}); err != nil {
+	logrus.Infof(logFmt, "registering server")
+	if err := s.register(manager, socket); err != nil {
 		logrus.Errorf(logFmt, "error registering server")
 		return err
+	}
+
+	if resetCh, err := manager.MonitorKubeletRestart(s.ctx); err == nil {
+		go func() {
+			logrus.Infof(logFmt, "start monitoring kubelet restart")
+			defer logrus.Infof(logFmt, "stop monitoring kubelet restart")
+			for {
+				select {
+				case <-s.ctx.Done():
+					return
+				case _, ok := <-resetCh:
+					if !ok {
+						return
+					}
+					logrus.Infof(logFmt, "re registering server")
+					if err := s.register(manager, socket); err != nil {
+						logrus.Errorf(logFmt, fmt.Sprint("error re registering server: ", err))
+						return
+					}
+				}
+			}
+		}()
+	} else {
+		logrus.Warnf(logFmt, "error monitoring kubelet restart")
 	}
 
 	return nil
 }
 
-func (s *devicePluginServer) Stop() error {
-	if s.stop == nil {
-		return errors.New("devicePluginServer(Stop): server is not running")
-	}
-	s.stop()
-	return nil
+func (s *devicePluginServer) register(manager Manager, socket string) error {
+	return manager.RegisterDeviceServer(s.ctx, &pluginapi.RegisterRequest{
+		Version:      pluginapi.Version,
+		Endpoint:     socket,
+		ResourceName: s.resourceName,
+	})
 }
 
 func (s *devicePluginServer) GetDevicePluginOptions(_ context.Context, _ *pluginapi.Empty) (*pluginapi.DevicePluginOptions, error) {
