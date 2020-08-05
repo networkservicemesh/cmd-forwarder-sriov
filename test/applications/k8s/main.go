@@ -32,14 +32,16 @@ import (
 	"google.golang.org/grpc"
 
 	"github.com/networkservicemesh/cmd-forwarder-sriov/local/sdk-sriov/pkg/tools"
-	kubelet "github.com/networkservicemesh/cmd-forwarder-sriov/test/applications/kubelet/server"
+	"github.com/networkservicemesh/cmd-forwarder-sriov/test/applications/k8s/deviceplugin"
+	"github.com/networkservicemesh/cmd-forwarder-sriov/test/applications/k8s/podresources"
 )
 
 const kubeletSocket = "kubelet.sock"
 
-// Config - configuration for kubelet
+// Config - configuration for k8s
 type Config struct {
 	DevicePluginPath string `default:"/var/lib/kubelet/device-plugins/" desc:"path to the device plugin directory"`
+	PodResourcesPath string `default:"/var/lib/kubelet/pod-resources/" desc:"path to the pod resources directory"`
 }
 
 func main() {
@@ -70,15 +72,19 @@ func main() {
 
 	log.Entry(ctx).Infof("Config: %#v", config)
 
-	// Create server
+	// Create and start device plugin server
 	grpcServer := grpc.NewServer()
-	_ = kubelet.NewRegistrationServer(config.DevicePluginPath, grpcServer)
-
+	deviceplugin.StartRegistrationServer(config.DevicePluginPath, grpcServer)
 	socketPath := tools.SocketPath(path.Join(config.DevicePluginPath, kubeletSocket))
-	srvErrCh := grpcutils.ListenAndServe(ctx, grpcutils.AddressToURL(socketPath), grpcServer)
-	exitOnErr(ctx, cancel, srvErrCh)
-	log.Entry(ctx).Infof("Startup completed in %v", time.Since(starttime))
+	exitOnErr(ctx, cancel, grpcutils.ListenAndServe(ctx, grpcutils.AddressToURL(socketPath), grpcServer))
 
+	// Create and start pod resources server
+	grpcServer = grpc.NewServer()
+	podresources.StartPodResourcesListerServer(grpcServer)
+	socketPath = tools.SocketPath(path.Join(config.PodResourcesPath, kubeletSocket))
+	exitOnErr(ctx, cancel, grpcutils.ListenAndServe(ctx, grpcutils.AddressToURL(socketPath), grpcServer))
+
+	log.Entry(ctx).Infof("Startup completed in %v", time.Since(starttime))
 	<-ctx.Done()
 }
 

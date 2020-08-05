@@ -14,15 +14,15 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-// Package kubelet provides kubelet stub application for device plugin testing without k8s
-package kubelet
+// Package deviceplugin provides device plugin GRPC API stubs for testing
+package deviceplugin
 
 import (
 	"context"
 	"path"
 
 	"github.com/networkservicemesh/sdk/pkg/tools/grpcutils"
-	"github.com/sirupsen/logrus"
+	"github.com/networkservicemesh/sdk/pkg/tools/log"
 	"google.golang.org/grpc"
 	pluginapi "k8s.io/kubelet/pkg/apis/deviceplugin/v1beta1"
 
@@ -33,36 +33,40 @@ type registrationServer struct {
 	devicePluginPath string
 }
 
-// NewRegistrationServer creates a new registrationServer and registers it on given GRPC server
-func NewRegistrationServer(devicePluginPath string, server *grpc.Server) pluginapi.RegistrationServer {
-	rs := &registrationServer{
+// StartRegistrationServer creates a new registrationServer and registers it on given GRPC server
+func StartRegistrationServer(devicePluginPath string, server *grpc.Server) {
+	pluginapi.RegisterRegistrationServer(server, &registrationServer{
 		devicePluginPath: devicePluginPath,
-	}
-	pluginapi.RegisterRegistrationServer(server, rs)
-	return rs
+	})
 }
 
 func (rs *registrationServer) Register(ctx context.Context, request *pluginapi.RegisterRequest) (*pluginapi.Empty, error) {
+	logEntry := log.Entry(ctx).WithField("registrationServer", "Register")
+
 	socketPath := tools.SocketPath(path.Join(rs.devicePluginPath, request.Endpoint))
 	socketURL := grpcutils.AddressToURL(socketPath)
 	conn, err := grpc.DialContext(ctx, socketURL.String(), grpc.WithInsecure())
 	if err != nil {
+		logEntry.Errorf("failed to connect to %v", socketPath.String())
 		return nil, err
 	}
 
 	client := pluginapi.NewDevicePluginClient(conn)
 	receiver, err := client.ListAndWatch(ctx, &pluginapi.Empty{})
 	if err != nil {
+		logEntry.Errorf("failed to ListAndWatch on %v", socketPath.String())
 		return nil, err
 	}
 
 	go func() {
+		logEntry.Info("client started")
 		for {
 			response, err := receiver.Recv()
 			if err != nil {
+				logEntry.Infof("client closed: %+v", err)
 				return
 			}
-			logrus.Infof("registrationServer(Register): devices update -> %v", response.Devices)
+			logEntry.Infof("devices update -> %v", response.Devices)
 		}
 	}()
 

@@ -14,22 +14,23 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+// Package deviceplugin provides tools for setting up device plugin server
 package deviceplugin
 
 import (
 	"context"
 	"fmt"
 	"path"
-	"time"
 
 	"github.com/google/uuid"
-	"github.com/sirupsen/logrus"
+	"github.com/networkservicemesh/sdk/pkg/tools/log"
 	pluginapi "k8s.io/kubelet/pkg/apis/deviceplugin/v1beta1"
+
+	"github.com/networkservicemesh/cmd-forwarder-sriov/local/sdk-sriov/pkg/k8s"
 )
 
 const (
 	resourceNamePrefix = "networkservicemesh.io/"
-	kubeletNotifyDelay = 30 * time.Second
 	vfioDir            = "/dev/vfio"
 )
 
@@ -47,37 +48,52 @@ type devicePluginServer struct {
 	hostBaseDir   string
 	hostPathEnv   string
 	ctx           context.Context
+	deviceMonitor DeviceMonitor
+	freeDevices   map[string]bool
 }
 
-// StartServer creates a new SR-IOV forwarder device plugin server and starts it
-func StartServer(ctx context.Context, config *ServerConfig, manager Manager) error {
-	logFmt := "StartServer: %v"
-
-	s := &devicePluginServer{
+func newDevicePluginServer(ctx context.Context, config *ServerConfig) *devicePluginServer {
+	return &devicePluginServer{
 		resourceName:  resourceNamePrefix + config.ResourceName,
 		resourceCount: config.ResourceCount,
 		hostBaseDir:   config.HostBaseDir,
 		hostPathEnv:   config.HostPathEnv,
 		ctx:           ctx,
+		freeDevices:   map[string]bool{},
 	}
+}
 
-	logrus.Infof(logFmt, "starting server")
+// StartServer creates a new SR-IOV forwarder device plugin server and starts it
+func StartServer(ctx context.Context, config *ServerConfig, manager k8s.Manager) error {
+	logEntry := log.Entry(ctx).WithField("devicePluginServer", "StartServer")
+
+	s := newDevicePluginServer(ctx, config)
+
+	logEntry.Info("starting device monitor")
+	deviceMonitor, err := newDeviceMonitor(ctx, manager)
+	if err != nil {
+		logEntry.Error("error starting device monitor")
+		return err
+	}
+	s.deviceMonitor = deviceMonitor
+
+	logEntry.Info("starting server")
 	socket, err := manager.StartDeviceServer(s.ctx, s)
 	if err != nil {
-		logrus.Errorf(logFmt, "error starting server")
+		logEntry.Error("error starting server")
 		return err
 	}
 
-	logrus.Infof(logFmt, "registering server")
+	logEntry.Info("registering server")
 	if err := s.register(manager, socket); err != nil {
-		logrus.Errorf(logFmt, "error registering server")
+		logEntry.Error("error registering server")
 		return err
 	}
 
 	if resetCh, err := manager.MonitorKubeletRestart(s.ctx); err == nil {
 		go func() {
-			logrus.Infof(logFmt, "start monitoring kubelet restart")
-			defer logrus.Infof(logFmt, "stop monitoring kubelet restart")
+			logEntry.Infof("start monitoring kubelet restart")
+			defer logEntry.Infof("stop monitoring kubelet restart")
 			for {
 				select {
 				case <-s.ctx.Done():
@@ -86,22 +102,22 @@ func StartServer(ctx context.Context, config *ServerConfig, manager Manager) err
 					if !ok {
 						return
 					}
-					logrus.Infof(logFmt, "re registering server")
-					if err := s.register(manager, socket); err != nil {
-						logrus.Errorf(logFmt, fmt.Sprint("error re registering server: ", err))
+					logEntry.Info("re registering server")
+					if err = s.register(manager, socket); err != nil {
+						logEntry.Errorf("error re registering server: %+v", err)
 						return
 					}
 				}
 			}
 		}()
 	} else {
-		logrus.Warnf(logFmt, "error monitoring kubelet restart")
+		logEntry.Warnf("error monitoring kubelet restart: %+v", err)
 	}
 
 	return nil
 }
 
-func (s *devicePluginServer) register(manager Manager, socket string) error {
+func (s *devicePluginServer) register(manager k8s.Manager, socket string) error {
 	return manager.RegisterDeviceServer(s.ctx, &pluginapi.RegisterRequest{
 		Version:      pluginapi.Version,
 		Endpoint:     socket,
@@ -114,30 +130,66 @@ func (s *devicePluginServer) GetDevicePluginOptions(_ context.Context, _ *plugin
 }
 
 func (s *devicePluginServer) ListAndWatch(_ *pluginapi.Empty, server pluginapi.DevicePlugin_ListAndWatchServer) error {
-	logFmt := "devicePluginServer(ListAndWatch): %v"
+	logEntry := log.Entry(s.ctx).WithField("devicePluginServer", "ListAndWatch")
 
-	resp := &pluginapi.ListAndWatchResponse{
-		Devices: make([]*pluginapi.Device, s.resourceCount),
-	}
-	for i := 0; i < s.resourceCount; i++ {
-		resp.Devices[i] = &pluginapi.Device{
-			ID:     fmt.Sprintf("%s/%v", s.resourceName, i),
-			Health: pluginapi.Healthy,
-		}
-	}
+	usedDevicesCh, errCh := s.deviceMonitor.Monitor(s.resourceName)
 
+	var usedDevices []string
 	for {
-		if err := server.Send(resp); err != nil {
-			logrus.Errorf(logFmt, "server unavailable")
+		if err := server.Send(&pluginapi.ListAndWatchResponse{
+			Devices: s.deviceList(usedDevices),
+		}); err != nil {
+			logEntry.Error("server unavailable")
 			return err
 		}
 		select {
 		case <-s.ctx.Done():
-			logrus.Infof(logFmt, "server stopped")
+			logEntry.Info("server stopped")
 			return nil
-		case <-time.After(kubeletNotifyDelay):
+		case err, ok := <-errCh:
+			if ok {
+				logEntry.Error("device monitor unavailable")
+				return err
+			}
+			return nil
+		case usedDevices = <-usedDevicesCh:
 		}
 	}
+}
+
+func (s *devicePluginServer) deviceList(usedDevices []string) []*pluginapi.Device {
+	for id := range s.freeDevices {
+		s.freeDevices[id] = true
+	}
+
+	for _, id := range usedDevices {
+		s.freeDevices[id] = false
+	}
+
+	freeCount := len(s.freeDevices) - len(usedDevices)
+	for i := 0; freeCount != s.resourceCount; i++ {
+		id := fmt.Sprintf("%s/%v", s.resourceName, i)
+		if freeCount < s.resourceCount {
+			if _, ok := s.freeDevices[id]; !ok {
+				s.freeDevices[id] = true
+				freeCount++
+			}
+		} else {
+			if isFree, ok := s.freeDevices[id]; ok && isFree {
+				delete(s.freeDevices, id)
+				freeCount--
+			}
+		}
+	}
+
+	var devices []*pluginapi.Device
+	for id := range s.freeDevices {
+		devices = append(devices, &pluginapi.Device{
+			ID:     id,
+			Health: pluginapi.Healthy,
+		})
+	}
+	return devices
 }
 
 func (s *devicePluginServer) Allocate(_ context.Context, request *pluginapi.AllocateRequest) (*pluginapi.AllocateResponse, error) {

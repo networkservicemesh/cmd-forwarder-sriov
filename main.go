@@ -39,7 +39,8 @@ import (
 	"github.com/networkservicemesh/sdk/pkg/tools/log"
 	"github.com/networkservicemesh/sdk/pkg/tools/signalctx"
 
-	"github.com/networkservicemesh/cmd-forwarder-sriov/local/sdk-sriov/pkg/deviceplugin"
+	"github.com/networkservicemesh/cmd-forwarder-sriov/local/sdk-sriov/pkg/k8s"
+	"github.com/networkservicemesh/cmd-forwarder-sriov/local/sdk-sriov/pkg/k8s/deviceplugin"
 	"github.com/networkservicemesh/cmd-forwarder-sriov/local/sdk-sriov/pkg/networkservice/chains/sriov"
 )
 
@@ -53,6 +54,7 @@ type Config struct {
 	HostBaseDir      string        `default:"/networkservicemesh/sriov" desc:"host base directory for clients mounts"`
 	HostPathEnv      string        `default:"SRIOV_HOST_PATH" desc:"env to get mounting point in host FS"`
 	DevicePluginPath string        `default:"/var/lib/kubelet/device-plugins/" desc:"path to the device plugin directory"`
+	PodResourcesPath string        `default:"/var/lib/kubelet/pod-resources/" desc:"path to the pod resources directory"`
 }
 
 func main() {
@@ -84,7 +86,7 @@ func main() {
 	log.Entry(ctx).Infof("Config: %#v", config)
 
 	// Start device plugin server
-	manager := deviceplugin.NewManager(config.DevicePluginPath)
+	manager := k8s.NewManager(config.DevicePluginPath, config.PodResourcesPath)
 	if err := deviceplugin.StartServer(ctx, &deviceplugin.ServerConfig{
 		ResourceName:  config.Name,
 		ResourceCount: config.ResourceCount,

@@ -20,7 +20,9 @@ RUN go build -o /bin/forwarder .
 
 FROM build as test
 COPY ./test ./test
-ENV NSM_DEVICEPLUGINPATH=/build/device-plugins
-RUN go build -o kubelet_stub ./test/applications/kubelet
-RUN mkdir -p ./device-plugins
-CMD ["/bin/bash", "-c", "./kubelet_stub > kubelet_stub.out & go test -test.v ./..."]
+RUN go build -o k8s_api_stub ./test/applications/k8s
+RUN mkdir -p ./k8s-stub/device-plugins
+ENV NSM_DEVICEPLUGINPATH=/build/k8s-stub/device-plugins
+RUN mkdir -p ./k8s-stub/pod-resources
+ENV NSM_PODRESOURCESPATH=/build/k8s-stub/pod-resources
+CMD ["/bin/bash", "-c", "./k8s_api_stub > k8s_api_stub.out & go test -test.v ./..."]
