@@ -96,27 +96,7 @@ jobs:
       - name: Exclude replace in go.mod
         run: |
           cat go.mod |
-          grep -v 'k8s.io/api => k8s.io/api' |
-          grep -v 'k8s.io/apiextensions-apiserver => k8s.io/apiextensions-apiserver' |
-          grep -v 'k8s.io/apimachinery => k8s.io/apimachinery' |
-          grep -v 'k8s.io/apiserver => k8s.io/apiserver' |
-          grep -v 'k8s.io/cli-runtime => k8s.io/cli-runtime' |
-          grep -v 'k8s.io/client-go => k8s.io/client-go' |
-          grep -v 'k8s.io/cloud-provider => k8s.io/cloud-provider' |
-          grep -v 'k8s.io/cluster-bootstrap => k8s.io/cluster-bootstrap' |
-          grep -v 'k8s.io/code-generator => k8s.io/code-generator' |
-          grep -v 'k8s.io/component-base => k8s.io/component-base' |
-          grep -v 'k8s.io/cri-api => k8s.io/cri-api' |
-          grep -v 'k8s.io/csi-translation-lib => k8s.io/csi-translation-lib' |
-          grep -v 'k8s.io/kube-aggregator => k8s.io/kube-aggregator' |
-          grep -v 'k8s.io/kube-controller-manager => k8s.io/kube-controller-manager' |
-          grep -v 'k8s.io/kube-proxy => k8s.io/kube-proxy' |
-          grep -v 'k8s.io/kube-scheduler => k8s.io/kube-scheduler' |
-          grep -v 'k8s.io/kubectl => k8s.io/kubectl' |
-          grep -v 'k8s.io/kubelet => k8s.io/kubelet' |
-          grep -v 'k8s.io/legacy-cloud-providers => k8s.io/legacy-cloud-providers' |
-          grep -v 'k8s.io/metrics => k8s.io/metrics' |
-          grep -v 'k8s.io/sample-apiserver => k8s.io/sample-apiserver' |
+          grep -v 'k8s.io/.* => k8s.io/.*' |
           grep ^'=>' || exit 0
           exit 1
   captureRunEnv:
