@@ -36,7 +36,7 @@ import (
 const (
 	resourceName    = "resource"
 	resourceCount   = 10
-	hostBaseDir     = "/base/dir"
+	hostBaseDir     = "/tmp/test-networkservicemesh"
 	hostPathEnv     = "HOST_PATH"
 	socket          = "socket"
 	containersCount = 5
@@ -196,7 +196,7 @@ func TestDevicePluginServer_Allocate(t *testing.T) {
 	for i, id := range devices(0, containersCount) {
 		j := i
 		dps.devices[id] = &device{
-			state:         deviceInUse,
+			free:          false,
 			clientCleanup: func() { areCleanedUp[j] = true },
 		}
 	}

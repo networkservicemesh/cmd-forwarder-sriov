@@ -36,9 +36,6 @@ const (
 	resourceNamePrefix = "networkservicemesh.io/"
 	kubeletNotifyDelay = 30 * time.Second
 	vfioDir            = "/dev/vfio"
-
-	deviceFree  deviceState = 0
-	deviceInUse deviceState = 2
 )
 
 // ServerConfig is a struct for configuring device plugin server
@@ -70,10 +67,8 @@ type devicePluginServer struct {
 	resourceListerClient podresources.PodResourcesListerClient
 }
 
-type deviceState int32
-
 type device struct {
-	state         deviceState
+	free          bool
 	clientCleanup func()
 }
 
@@ -112,44 +107,55 @@ func StartServer(ctx context.Context, config *ServerConfig, manager K8sManager) 
 	}
 
 	logEntry.Info("registering server")
-	if err := s.register(manager, socket); err != nil {
+	if err := manager.RegisterDeviceServer(s.ctx, &pluginapi.RegisterRequest{
+		Version:      pluginapi.Version,
+		Endpoint:     socket,
+		ResourceName: s.resourceName,
+	}); err != nil {
 		logEntry.Error("error registering server")
 		return err
 	}
 
-	if resetCh, err := manager.MonitorKubeletRestart(s.ctx); err == nil {
-		go func() {
-			logEntry.Infof("start monitoring kubelet restart")
-			defer logEntry.Infof("stop monitoring kubelet restart")
-			for {
-				select {
-				case <-s.ctx.Done():
-					return
-				case _, ok := <-resetCh:
-					if !ok {
-						return
-					}
-					logEntry.Info("re registering server")
-					if err = s.register(manager, socket); err != nil {
-						logEntry.Errorf("error re registering server: %+v", err)
-						return
-					}
-				}
-			}
-		}()
-	} else {
+	if err := s.monitorKubeletRestart(manager, socket); err != nil {
 		logEntry.Warnf("error monitoring kubelet restart: %+v", err)
 	}
 
 	return nil
 }
 
-func (s *devicePluginServer) register(manager K8sManager, socket string) error {
-	return manager.RegisterDeviceServer(s.ctx, &pluginapi.RegisterRequest{
-		Version:      pluginapi.Version,
-		Endpoint:     socket,
-		ResourceName: s.resourceName,
-	})
+func (s *devicePluginServer) monitorKubeletRestart(manager K8sManager, socket string) error {
+	logEntry := log.Entry(s.ctx).WithField("devicePluginServer", "monitorKubeletRestart")
+
+	resetCh, err := manager.MonitorKubeletRestart(s.ctx)
+	if err != nil {
+		return err
+	}
+
+	go func() {
+		logEntry.Infof("start monitoring kubelet restart")
+		defer logEntry.Infof("stop monitoring kubelet restart")
+		for {
+			select {
+			case <-s.ctx.Done():
+				return
+			case _, ok := <-resetCh:
+				if !ok {
+					return
+				}
+				logEntry.Info("re registering server")
+				if err = manager.RegisterDeviceServer(s.ctx, &pluginapi.RegisterRequest{
+					Version:      pluginapi.Version,
+					Endpoint:     socket,
+					ResourceName: s.resourceName,
+				}); err != nil {
+					logEntry.Errorf("error re registering server: %+v", err)
+					return
+				}
+			}
+		}
+	}()
+
+	return nil
 }
 
 func (s *devicePluginServer) GetDevicePluginOptions(_ context.Context, _ *pluginapi.Empty) (*pluginapi.DevicePluginOptions, error) {
@@ -176,7 +182,7 @@ func (s *devicePluginServer) ListAndWatch(_ *pluginapi.Empty, server pluginapi.D
 		select {
 		case <-s.ctx.Done():
 			logEntry.Info("server stopped")
-			return nil
+			return s.ctx.Err()
 		case <-time.After(s.resourcePollTimeout):
 		case <-s.updateDevicesCh:
 		}
@@ -205,13 +211,12 @@ func (s *devicePluginServer) updateDevices(idsInUse map[string]bool) {
 
 	var freeCount int
 	for id, device := range s.devices {
-		if idsInUse[id] {
-			device.state = deviceInUse
-		} else if device.state != deviceFree {
-			device.state--
-		}
-
-		if device.state == deviceFree {
+		switch {
+		case idsInUse[id]:
+			device.free = false
+		case !device.free:
+			device.free = true
+		default:
 			if device.clientCleanup != nil {
 				device.clientCleanup()
 				device.clientCleanup = nil
@@ -227,7 +232,9 @@ func (s *devicePluginServer) updateDevices(idsInUse map[string]bool) {
 	for i := 0; freeCount < s.resourceCount; i++ {
 		id := fmt.Sprintf("%s/%v", s.resourceName, i)
 		if _, ok := s.devices[id]; !ok {
-			s.devices[id] = &device{}
+			s.devices[id] = &device{
+				free: true,
+			}
 			freeCount++
 		}
 	}
@@ -254,10 +261,11 @@ func (s *devicePluginServer) Allocate(_ context.Context, request *pluginapi.Allo
 	devices := map[string]*device{}
 	for i, container := range request.ContainerRequests {
 		hostPath := path.Join(s.hostBaseDir, uuid.New().String())
+		_ = os.RemoveAll(hostPath)
 
 		for k, id := range container.DevicesIDs {
 			devices[id] = &device{
-				state: deviceInUse,
+				free: false,
 			}
 			if k == 0 {
 				devices[id].clientCleanup = func() { _ = os.RemoveAll(hostPath) }
