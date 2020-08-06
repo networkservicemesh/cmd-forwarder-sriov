@@ -19,47 +19,68 @@ package deviceplugin
 
 import (
 	"context"
+	"errors"
 	"fmt"
+	"os"
 	"path"
+	"sync"
+	"time"
 
 	"github.com/google/uuid"
 	"github.com/networkservicemesh/sdk/pkg/tools/log"
 	pluginapi "k8s.io/kubelet/pkg/apis/deviceplugin/v1beta1"
+	podresources "k8s.io/kubernetes/pkg/kubelet/apis/podresources/v1alpha1"
 
 	"github.com/networkservicemesh/cmd-forwarder-sriov/local/sdk-sriov/pkg/k8s"
 )
 
 const (
 	resourceNamePrefix = "networkservicemesh.io/"
+	kubeletNotifyDelay = 30 * time.Second
 	vfioDir            = "/dev/vfio"
+
+	deviceFree  deviceState = 0
+	deviceInUse deviceState = 2
 )
 
 // ServerConfig is a struct for configuring device plugin server
 type ServerConfig struct {
-	ResourceName  string
-	ResourceCount int
-	HostBaseDir   string
-	HostPathEnv   string
+	ResourceName        string
+	ResourceCount       int
+	HostBaseDir         string
+	HostPathEnv         string
 }
 
 type devicePluginServer struct {
-	resourceName  string
-	resourceCount int
-	hostBaseDir   string
-	hostPathEnv   string
-	ctx           context.Context
-	deviceMonitor DeviceMonitor
-	freeDevices   map[string]bool
+	ctx                  context.Context
+	resourceName         string
+	resourceCount        int
+	resourcePollTimeout  time.Duration
+	hostBaseDir          string
+	hostPathEnv          string
+	devices              map[string]*device
+	updateDevicesCh      chan bool
+	lock                 sync.Mutex
+	resourceListerClient podresources.PodResourcesListerClient
+}
+
+type deviceState int32
+
+type device struct {
+	state         deviceState
+	clientCleanup func()
 }
 
 func newDevicePluginServer(ctx context.Context, config *ServerConfig) *devicePluginServer {
 	return &devicePluginServer{
-		resourceName:  resourceNamePrefix + config.ResourceName,
-		resourceCount: config.ResourceCount,
-		hostBaseDir:   config.HostBaseDir,
-		hostPathEnv:   config.HostPathEnv,
-		ctx:           ctx,
-		freeDevices:   map[string]bool{},
+		ctx:                 ctx,
+		resourceName:        resourceNamePrefix + config.ResourceName,
+		resourceCount:       config.ResourceCount,
+		resourcePollTimeout: kubeletNotifyDelay,
+		hostBaseDir:         config.HostBaseDir,
+		hostPathEnv:         config.HostPathEnv,
+		devices:             map[string]*device{},
+		updateDevicesCh:     make(chan bool, 1),
 	}
 }
 
@@ -69,13 +90,13 @@ func StartServer(ctx context.Context, config *ServerConfig, manager k8s.Manager)
 
 	s := newDevicePluginServer(ctx, config)
 
-	logEntry.Info("starting device monitor")
-	deviceMonitor, err := newDeviceMonitor(ctx, manager)
+	logEntry.Info("get resource lister client")
+	resourceListerClient, err := manager.GetPodResourcesListerClient(ctx)
 	if err != nil {
-		logEntry.Error("error starting device monitor")
+		logEntry.Error("failed to get resource lister client")
 		return err
 	}
-	s.deviceMonitor = deviceMonitor
+	s.resourceListerClient = resourceListerClient
 
 	logEntry.Info("starting server")
 	socket, err := manager.StartDeviceServer(s.ctx, s)
@@ -132,64 +153,91 @@ func (s *devicePluginServer) GetDevicePluginOptions(_ context.Context, _ *plugin
 func (s *devicePluginServer) ListAndWatch(_ *pluginapi.Empty, server pluginapi.DevicePlugin_ListAndWatchServer) error {
 	logEntry := log.Entry(s.ctx).WithField("devicePluginServer", "ListAndWatch")
 
-	usedDevicesCh, errCh := s.deviceMonitor.Monitor(s.resourceName)
-
-	var usedDevices []string
 	for {
-		if err := server.Send(&pluginapi.ListAndWatchResponse{
-			Devices: s.deviceList(usedDevices),
-		}); err != nil {
-			logEntry.Error("server unavailable")
+		resp, err := s.resourceListerClient.List(s.ctx, &podresources.ListPodResourcesRequest{})
+		if err != nil {
+			logEntry.Errorf("resourceListerClient unavailable: %+v", err)
 			return err
 		}
+
+		s.updateDevices(s.respToDeviceIds(resp))
+
+		if err := server.Send(s.listAndWatchResponse()); err != nil {
+			logEntry.Errorf("server unavailable: %+v", err)
+			return err
+		}
+
 		select {
 		case <-s.ctx.Done():
 			logEntry.Info("server stopped")
 			return nil
-		case err, ok := <-errCh:
-			if ok {
-				logEntry.Error("device monitor unavailable")
-				return err
-			}
-			return nil
-		case usedDevices = <-usedDevicesCh:
+		case <-time.After(s.resourcePollTimeout):
+		case <-s.updateDevicesCh:
 		}
 	}
 }
 
-func (s *devicePluginServer) deviceList(usedDevices []string) []*pluginapi.Device {
-	for id := range s.freeDevices {
-		s.freeDevices[id] = true
-	}
-
-	for _, id := range usedDevices {
-		s.freeDevices[id] = false
-	}
-
-	freeCount := len(s.freeDevices) - len(usedDevices)
-	for i := 0; freeCount != s.resourceCount; i++ {
-		id := fmt.Sprintf("%s/%v", s.resourceName, i)
-		if freeCount < s.resourceCount {
-			if _, ok := s.freeDevices[id]; !ok {
-				s.freeDevices[id] = true
-				freeCount++
+func (s *devicePluginServer) respToDeviceIds(resp *podresources.ListPodResourcesResponse) map[string]bool {
+	deviceIds := map[string]bool{}
+	for _, pod := range resp.PodResources {
+		for _, container := range pod.Containers {
+			for _, device := range container.Devices {
+				if device.ResourceName == s.resourceName {
+					for _, id := range device.DeviceIds {
+						deviceIds[id] = true
+					}
+				}
 			}
-		} else {
-			if isFree, ok := s.freeDevices[id]; ok && isFree {
-				delete(s.freeDevices, id)
-				freeCount--
+		}
+	}
+	return deviceIds
+}
+
+func (s *devicePluginServer) updateDevices(idsInUse map[string]bool) {
+	s.lock.Lock()
+	defer s.lock.Unlock()
+
+	var freeCount int
+	for id, device := range s.devices {
+		if idsInUse[id] {
+			device.state = deviceInUse
+		} else if device.state != deviceFree {
+			device.state--
+		}
+
+		if device.state == deviceFree {
+			if device.clientCleanup != nil {
+				device.clientCleanup()
+				device.clientCleanup = nil
+			}
+			if freeCount < s.resourceCount {
+				freeCount++
+			} else {
+				delete(s.devices, id)
 			}
 		}
 	}
 
+	for i := 0; freeCount < s.resourceCount; i++ {
+		id := fmt.Sprintf("%s/%v", s.resourceName, i)
+		if _, ok := s.devices[id]; !ok {
+			s.devices[id] = &device{}
+			freeCount++
+		}
+	}
+}
+
+func (s *devicePluginServer) listAndWatchResponse() *pluginapi.ListAndWatchResponse {
 	var devices []*pluginapi.Device
-	for id := range s.freeDevices {
+	for id := range s.devices {
 		devices = append(devices, &pluginapi.Device{
 			ID:     id,
 			Health: pluginapi.Healthy,
 		})
 	}
-	return devices
+	return &pluginapi.ListAndWatchResponse{
+		Devices: devices,
+	}
 }
 
 func (s *devicePluginServer) Allocate(_ context.Context, request *pluginapi.AllocateRequest) (*pluginapi.AllocateResponse, error) {
@@ -197,8 +245,19 @@ func (s *devicePluginServer) Allocate(_ context.Context, request *pluginapi.Allo
 		ContainerResponses: make([]*pluginapi.ContainerAllocateResponse, len(request.ContainerRequests)),
 	}
 
-	for i := range request.ContainerRequests {
+	devices := map[string]*device{}
+	for i, container := range request.ContainerRequests {
 		hostPath := path.Join(s.hostBaseDir, uuid.New().String())
+
+		for k, id := range container.DevicesIDs {
+			devices[id] = &device{
+				state: deviceInUse,
+			}
+			if k == 0 {
+				devices[id].clientCleanup = func() { _ = os.RemoveAll(hostPath) }
+			}
+		}
+
 		response.ContainerResponses[i] = &pluginapi.ContainerAllocateResponse{
 			Envs: map[string]string{
 				s.hostPathEnv: hostPath,
@@ -211,7 +270,36 @@ func (s *devicePluginServer) Allocate(_ context.Context, request *pluginapi.Allo
 		}
 	}
 
+	if err := s.useDevices(devices); err != nil {
+		return nil, err
+	}
+
+	select {
+	case s.updateDevicesCh <- true:
+	default:
+	}
+
 	return response, nil
+}
+
+func (s *devicePluginServer) useDevices(devices map[string]*device) error {
+	s.lock.Lock()
+	defer s.lock.Unlock()
+
+	for id := range devices {
+		if _, ok := s.devices[id]; !ok {
+			return errors.New("trying to use non existing device")
+		}
+	}
+
+	for id, device := range devices {
+		if s.devices[id].clientCleanup != nil {
+			s.devices[id].clientCleanup()
+		}
+		s.devices[id] = device
+	}
+
+	return nil
 }
 
 func (s *devicePluginServer) PreStartContainer(_ context.Context, _ *pluginapi.PreStartContainerRequest) (*pluginapi.PreStartContainerResponse, error) {

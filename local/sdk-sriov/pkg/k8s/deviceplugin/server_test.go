@@ -19,11 +19,14 @@ package deviceplugin
 import (
 	"context"
 	"fmt"
+	"reflect"
+	"sort"
 	"testing"
 	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
+	"google.golang.org/grpc"
 	pluginapi "k8s.io/kubelet/pkg/apis/deviceplugin/v1beta1"
 	podresources "k8s.io/kubernetes/pkg/kubelet/apis/podresources/v1alpha1"
 
@@ -38,6 +41,13 @@ const (
 	socket          = "socket"
 	containersCount = 5
 )
+
+var config = &ServerConfig{
+	ResourceName:  resourceName,
+	ResourceCount: resourceCount,
+	HostBaseDir:   hostBaseDir,
+	HostPathEnv:   hostPathEnv,
+}
 
 func TestDevicePluginServer_Start(t *testing.T) {
 	m := &managerMock{}
@@ -55,12 +65,7 @@ func TestDevicePluginServer_Start(t *testing.T) {
 			podresources.PodResourcesListerClient
 		}{}, nil)
 
-	err := StartServer(context.TODO(), &ServerConfig{
-		ResourceName:  resourceName,
-		ResourceCount: resourceCount,
-		HostBaseDir:   hostBaseDir,
-		HostPathEnv:   hostPathEnv,
-	}, m)
+	err := StartServer(context.TODO(), config, m)
 	assert.Nil(t, err)
 
 	m.mock.AssertCalled(t, "StartDeviceServer", mock.Anything, mock.Anything)
@@ -85,18 +90,16 @@ func assertNumberOfCallsEventually(t *testing.T, m *managerMock, methodName stri
 }
 
 func TestDevicePluginServer_ListAndWatch(t *testing.T) {
-	dm := &deviceMonitorMock{}
-	usedDevicesCh := make(chan []string)
-	dm.mock.On("Monitor", mock.Anything).
-		Return(usedDevicesCh, make(chan error))
+	resp := &podresources.ListPodResourcesResponse{}
+	*resp = *listPodResourcesResponse([]string{})
 
-	dps := newDevicePluginServer(context.TODO(), &ServerConfig{
-		ResourceName:  resourceName,
-		ResourceCount: resourceCount,
-		HostBaseDir:   hostBaseDir,
-		HostPathEnv:   hostPathEnv,
-	})
-	dps.deviceMonitor = dm
+	prlc := &podResourcesListerClientMock{}
+	prlc.mock.On("List", mock.Anything, mock.Anything, mock.Anything).
+		Return(resp, nil)
+
+	dps := newDevicePluginServer(context.TODO(), config)
+	dps.resourcePollTimeout = 10 * time.Millisecond
+	dps.resourceListerClient = prlc
 
 	respCh := make(chan *pluginapi.ListAndWatchResponse)
 	lws := &listAndWatchServer{
@@ -108,26 +111,73 @@ func TestDevicePluginServer_ListAndWatch(t *testing.T) {
 	// 1. Init device list
 
 	validateResponse(t, respCh, resourceCount)
-	dm.mock.AssertCalled(t, "Monitor", resourceNamePrefix+resourceName)
 
 	// 2. Use some devices
 
-	usedDevicesCh <- devices(0, 5)
+	*resp = *listPodResourcesResponse(devices(0, 5))
 	validateResponse(t, respCh, resourceCount+5)
 
-	usedDevicesCh <- devices(0, 10)
+	*resp = *listPodResourcesResponse(devices(0, 10))
 	validateResponse(t, respCh, resourceCount+10)
 
+	areCleanedUp := make([]bool, 10)
+	for i, id := range devices(0, 10) {
+		j := i
+		dps.devices[id].clientCleanup = func() { areCleanedUp[j] = true }
+	}
+
 	// 3. Free some devices
-	usedDevicesCh <- devices(5, 10)
+	*resp = *listPodResourcesResponse(devices(5, 10))
 	validateResponse(t, respCh, resourceCount+5)
 
-	usedDevicesCh <- []string{}
+	for i := 0; i < 10; i++ {
+		assert.True(t, areCleanedUp[i] == (i < 5))
+	}
+
+	*resp = *listPodResourcesResponse([]string{})
 	validateResponse(t, respCh, resourceCount)
+
+	for i := 5; i < 10; i++ {
+		assert.True(t, areCleanedUp[i])
+	}
+}
+
+func listPodResourcesResponse(ids []string) *podresources.ListPodResourcesResponse {
+	sort.Strings(ids)
+	resp := &podresources.ListPodResourcesResponse{
+		PodResources: []*podresources.PodResources{
+			{},
+		},
+	}
+
+	if len(ids) == 0 {
+		return resp
+	}
+
+	step := len(ids)/3 + 1
+	for i := 0; i < len(ids); i += step {
+		devices := []*podresources.ContainerDevices{
+			{
+				ResourceName: resourceNamePrefix + resourceName,
+			},
+			{
+				ResourceName: "wrong",
+			},
+		}
+		for k := i; k < i+step && k < len(ids); k++ {
+			devices[0].DeviceIds = append(devices[0].DeviceIds, ids[k])
+			devices[1].DeviceIds = append(devices[1].DeviceIds, "wrong-"+ids[k])
+		}
+		resp.PodResources[0].Containers = append(resp.PodResources[0].Containers, &podresources.ContainerResources{
+			Devices: devices,
+		})
+	}
+
+	return resp
 }
 
 func validateResponse(t *testing.T, respCh chan *pluginapi.ListAndWatchResponse, expectedCount int) {
-	resp, ok := testingtools.ReadListAndWatchResponseChan(t, respCh, 1*time.Second)
+	resp, ok := testingtools.ReadListAndWatchResponseChan(t, respCh, 5*time.Minute)
 	assert.True(t, ok)
 	assert.Equal(t, expectedCount, len(resp.Devices))
 	for _, device := range resp.Devices {
@@ -144,16 +194,25 @@ func devices(from, to int) []string {
 }
 
 func TestDevicePluginServer_Allocate(t *testing.T) {
-	dps := newDevicePluginServer(context.TODO(), &ServerConfig{
-		ResourceName:  resourceName,
-		ResourceCount: resourceCount,
-		HostBaseDir:   hostBaseDir,
-		HostPathEnv:   hostPathEnv,
-	})
+	dps := newDevicePluginServer(context.TODO(), config)
 
-	response, err := dps.Allocate(context.TODO(), &pluginapi.AllocateRequest{
-		ContainerRequests: make([]*pluginapi.ContainerAllocateRequest, containersCount),
-	})
+	areCleanedUp := make([]bool, containersCount)
+	for i, id := range devices(0, containersCount) {
+		j := i
+		dps.devices[id] = &device{
+			state:         deviceInUse,
+			clientCleanup: func() { areCleanedUp[j] = true },
+		}
+	}
+
+	req := &pluginapi.AllocateRequest{}
+	for i := 0; i < containersCount; i++ {
+		req.ContainerRequests = append(req.ContainerRequests, &pluginapi.ContainerAllocateRequest{
+			DevicesIDs: devices(i, i+1),
+		})
+	}
+
+	response, err := dps.Allocate(context.TODO(), req)
 	assert.Nil(t, err)
 	assert.Condition(t, func() bool {
 		if len(response.ContainerResponses) != containersCount {
@@ -166,6 +225,10 @@ func TestDevicePluginServer_Allocate(t *testing.T) {
 		}
 		return true
 	})
+
+	for _, isCleanedUp := range areCleanedUp {
+		assert.True(t, isCleanedUp)
+	}
 }
 
 func testContainerResponse(container *pluginapi.ContainerAllocateResponse) bool {
@@ -203,22 +266,33 @@ func (m *managerMock) GetPodResourcesListerClient(ctx context.Context) (podresou
 	return res.Get(0).(podresources.PodResourcesListerClient), res.Error(1)
 }
 
-type deviceMonitorMock struct {
+type podResourcesListerClientMock struct {
 	mock mock.Mock
 }
 
-func (dms *deviceMonitorMock) Monitor(resourceName string) (devicesCh chan []string, errCh chan error) {
-	res := dms.mock.Called(resourceName)
-	return res.Get(0).(chan []string), res.Get(1).(chan error)
+func (prlc *podResourcesListerClientMock) List(ctx context.Context, in *podresources.ListPodResourcesRequest, opts ...grpc.CallOption) (*podresources.ListPodResourcesResponse, error) {
+	res := prlc.mock.Called(ctx, in, opts)
+	return res.Get(0).(*podresources.ListPodResourcesResponse), res.Error(1)
 }
 
 type listAndWatchServer struct {
-	respCh chan<- *pluginapi.ListAndWatchResponse
+	respCh     chan<- *pluginapi.ListAndWatchResponse
+	oldDevices []string
 
 	pluginapi.DevicePlugin_ListAndWatchServer
 }
 
 func (lws *listAndWatchServer) Send(response *pluginapi.ListAndWatchResponse) error {
-	lws.respCh <- response
+	var newDevices []string
+	for _, device := range response.Devices {
+		newDevices = append(newDevices, device.ID)
+	}
+
+	sort.Strings(newDevices)
+	if !reflect.DeepEqual(newDevices, lws.oldDevices) {
+		lws.oldDevices = newDevices
+		lws.respCh <- response
+	}
+
 	return nil
 }

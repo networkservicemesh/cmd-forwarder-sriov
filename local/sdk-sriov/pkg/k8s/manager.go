@@ -163,7 +163,6 @@ func (km *k8sManager) MonitorKubeletRestart(ctx context.Context) (chan bool, err
 	return monitorCh, nil
 }
 
-// GetPodResourcesListerClient returns a new connected PodResourcesListerClient
 func (km *k8sManager) GetPodResourcesListerClient(ctx context.Context) (podresources.PodResourcesListerClient, error) {
 	logEntry := log.Entry(ctx).WithField("k8sManager", "GetPodResourcesListerClient")
 

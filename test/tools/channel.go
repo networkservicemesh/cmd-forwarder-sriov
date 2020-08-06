@@ -66,6 +66,6 @@ func ReadStringArrChan(t *testing.T, ch chan []string, timeout time.Duration) (v
 }
 
 func notOk(t *testing.T) bool {
-	assert.Fail(t, "timeout exceeded")
+	assert.FailNow(t, "timeout exceeded")
 	return false
 }
