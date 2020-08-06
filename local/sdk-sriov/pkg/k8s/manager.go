@@ -39,36 +39,25 @@ const (
 	kubeletSocket      = "kubelet.sock"
 )
 
-// Manager is a helper class to work with the k8s API
-type Manager interface {
-	// StartDeviceServer starts device plugin server and returns the name of the corresponding unix socket
-	StartDeviceServer(ctx context.Context, deviceServer pluginapi.DevicePluginServer) (string, error)
-	// RegisterDeviceServer registers device plugin server using the given request
-	RegisterDeviceServer(ctx context.Context, request *pluginapi.RegisterRequest) error
-	// MonitorKubeletRestart monitors if kubelet restarts so we need to re register device plugin server
-	MonitorKubeletRestart(ctx context.Context) (chan bool, error)
-
-	// GetPodResourcesListerClient returns a new PodResourcesListerClient
-	GetPodResourcesListerClient(ctx context.Context) (podresources.PodResourcesListerClient, error)
-}
-
-type k8sManager struct {
+// Manager is a k8s API helper class
+type Manager struct {
 	devicePluginPath   string
 	devicePluginSocket string
 	podResourcesSocket string
 }
 
-// NewManager creates a new device plugin manager
-func NewManager(devicePluginPath, podResourcesPath string) Manager {
-	return &k8sManager{
+// NewManager creates a new k8s manager
+func NewManager(devicePluginPath, podResourcesPath string) *Manager {
+	return &Manager{
 		devicePluginPath:   devicePluginPath,
 		devicePluginSocket: path.Join(devicePluginPath, kubeletSocket),
 		podResourcesSocket: path.Join(podResourcesPath, kubeletSocket),
 	}
 }
 
-func (km *k8sManager) StartDeviceServer(ctx context.Context, deviceServer pluginapi.DevicePluginServer) (string, error) {
-	logEntry := log.Entry(ctx).WithField("k8sManager", "StartDeviceServer")
+// StartDeviceServer starts device plugin server and returns the name of the corresponding unix socket
+func (km *Manager) StartDeviceServer(ctx context.Context, deviceServer pluginapi.DevicePluginServer) (string, error) {
+	logEntry := log.Entry(ctx).WithField("Manager", "StartDeviceServer")
 
 	socket := uuid.New().String()
 	socketPath := tools.SocketPath(path.Join(km.devicePluginPath, socket))
@@ -104,8 +93,9 @@ func (km *k8sManager) StartDeviceServer(ctx context.Context, deviceServer plugin
 	return socket, nil
 }
 
-func (km *k8sManager) RegisterDeviceServer(ctx context.Context, request *pluginapi.RegisterRequest) error {
-	logEntry := log.Entry(ctx).WithField("k8sManager", "RegisterDeviceServer")
+// RegisterDeviceServer registers device plugin server using the given request
+func (km *Manager) RegisterDeviceServer(ctx context.Context, request *pluginapi.RegisterRequest) error {
+	logEntry := log.Entry(ctx).WithField("Manager", "RegisterDeviceServer")
 
 	socketURL := grpcutils.AddressToURL(tools.SocketPath(km.devicePluginSocket))
 	conn, err := grpc.DialContext(ctx, socketURL.String(), grpc.WithInsecure())
@@ -124,8 +114,9 @@ func (km *k8sManager) RegisterDeviceServer(ctx context.Context, request *plugina
 	return nil
 }
 
-func (km *k8sManager) MonitorKubeletRestart(ctx context.Context) (chan bool, error) {
-	logEntry := log.Entry(ctx).WithField("k8sManager", "MonitorKubeletRestart")
+// MonitorKubeletRestart monitors if kubelet restarts so we need to re register device plugin server
+func (km *Manager) MonitorKubeletRestart(ctx context.Context) (chan bool, error) {
+	logEntry := log.Entry(ctx).WithField("Manager", "MonitorKubeletRestart")
 
 	watcher, err := tools.WatchOn(km.devicePluginPath)
 	if err != nil {
@@ -163,8 +154,9 @@ func (km *k8sManager) MonitorKubeletRestart(ctx context.Context) (chan bool, err
 	return monitorCh, nil
 }
 
-func (km *k8sManager) GetPodResourcesListerClient(ctx context.Context) (podresources.PodResourcesListerClient, error) {
-	logEntry := log.Entry(ctx).WithField("k8sManager", "GetPodResourcesListerClient")
+// GetPodResourcesListerClient returns a new PodResourcesListerClient
+func (km *Manager) GetPodResourcesListerClient(ctx context.Context) (podresources.PodResourcesListerClient, error) {
+	logEntry := log.Entry(ctx).WithField("Manager", "GetPodResourcesListerClient")
 
 	socketURL := grpcutils.AddressToURL(tools.SocketPath(km.podResourcesSocket))
 	conn, err := grpc.DialContext(ctx, socketURL.String(), grpc.WithInsecure())

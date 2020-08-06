@@ -30,8 +30,6 @@ import (
 	"github.com/networkservicemesh/sdk/pkg/tools/log"
 	pluginapi "k8s.io/kubelet/pkg/apis/deviceplugin/v1beta1"
 	podresources "k8s.io/kubernetes/pkg/kubelet/apis/podresources/v1alpha1"
-
-	"github.com/networkservicemesh/cmd-forwarder-sriov/local/sdk-sriov/pkg/k8s"
 )
 
 const (
@@ -49,6 +47,14 @@ type ServerConfig struct {
 	ResourceCount       int
 	HostBaseDir         string
 	HostPathEnv         string
+}
+
+// K8sManager is a bridge interface to the k8s API
+type K8sManager interface {
+	StartDeviceServer(ctx context.Context, deviceServer pluginapi.DevicePluginServer) (string, error)
+	RegisterDeviceServer(ctx context.Context, request *pluginapi.RegisterRequest) error
+	MonitorKubeletRestart(ctx context.Context) (chan bool, error)
+	GetPodResourcesListerClient(ctx context.Context) (podresources.PodResourcesListerClient, error)
 }
 
 type devicePluginServer struct {
@@ -85,7 +91,7 @@ func newDevicePluginServer(ctx context.Context, config *ServerConfig) *devicePlu
 }
 
 // StartServer creates a new SR-IOV forwarder device plugin server and starts it
-func StartServer(ctx context.Context, config *ServerConfig, manager k8s.Manager) error {
+func StartServer(ctx context.Context, config *ServerConfig, manager K8sManager) error {
 	logEntry := log.Entry(ctx).WithField("devicePluginServer", "StartServer")
 
 	s := newDevicePluginServer(ctx, config)
@@ -138,7 +144,7 @@ func StartServer(ctx context.Context, config *ServerConfig, manager k8s.Manager)
 	return nil
 }
 
-func (s *devicePluginServer) register(manager k8s.Manager, socket string) error {
+func (s *devicePluginServer) register(manager K8sManager, socket string) error {
 	return manager.RegisterDeviceServer(s.ctx, &pluginapi.RegisterRequest{
 		Version:      pluginapi.Version,
 		Endpoint:     socket,
