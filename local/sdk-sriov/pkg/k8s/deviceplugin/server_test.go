@@ -74,18 +74,14 @@ func TestDevicePluginServer_Start(t *testing.T) {
 	}))
 
 	testingtools.WriteBoolChan(t, resetCh, true, 10*time.Second)
-	assertNumberOfCallsEventually(t, m, "RegisterDeviceServer", 2)
-}
-
-func assertNumberOfCallsEventually(t *testing.T, m *managerMock, methodName string, expectedCalls int) {
 	assert.Eventually(t, func() bool {
 		var count int
 		for i := range m.mock.Calls {
-			if m.mock.Calls[i].Method == methodName {
+			if m.mock.Calls[i].Method == "RegisterDeviceServer" {
 				count++
 			}
 		}
-		return count == expectedCalls
+		return count == 2
 	}, 10*time.Second, 10*time.Millisecond)
 }
 
