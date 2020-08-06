@@ -43,10 +43,10 @@ const (
 
 // ServerConfig is a struct for configuring device plugin server
 type ServerConfig struct {
-	ResourceName        string
-	ResourceCount       int
-	HostBaseDir         string
-	HostPathEnv         string
+	ResourceName  string
+	ResourceCount int
+	HostBaseDir   string
+	HostPathEnv   string
 }
 
 // K8sManager is a bridge interface to the k8s API
