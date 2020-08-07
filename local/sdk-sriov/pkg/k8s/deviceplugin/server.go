@@ -132,8 +132,8 @@ func (s *devicePluginServer) monitorKubeletRestart(manager K8sManager, socket st
 	}
 
 	go func() {
-		logEntry.Infof("start monitoring kubelet restart")
-		defer logEntry.Infof("stop monitoring kubelet restart")
+		logEntry.Info("start monitoring kubelet restart")
+		defer logEntry.Info("stop monitoring kubelet restart")
 		for {
 			select {
 			case <-s.ctx.Done():
