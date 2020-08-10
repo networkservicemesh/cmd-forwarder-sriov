@@ -39,6 +39,8 @@ import (
 	"github.com/networkservicemesh/sdk/pkg/tools/log"
 	"github.com/networkservicemesh/sdk/pkg/tools/signalctx"
 
+	"github.com/networkservicemesh/cmd-forwarder-sriov/local/sdk-sriov/pkg/k8s"
+	"github.com/networkservicemesh/cmd-forwarder-sriov/local/sdk-sriov/pkg/k8s/deviceplugin"
 	"github.com/networkservicemesh/cmd-forwarder-sriov/local/sdk-sriov/pkg/networkservice/chains/sriov"
 )
 
@@ -48,6 +50,11 @@ type Config struct {
 	ListenOn         url.URL       `default:"unix:///listen.on.socket" desc:"url to listen on" split_words:"true"`
 	ConnectTo        url.URL       `default:"unix:///connect.to.socket" desc:"url to connect to" split_words:"true"`
 	MaxTokenLifetime time.Duration `default:"24h" desc:"maximum lifetime of tokens" split_words:"true"`
+	ResourceCount    int           `default:"10" desc:"device plugin resource count"`
+	HostBaseDir      string        `default:"/networkservicemesh/sriov" desc:"host base directory for clients mounts"`
+	HostPathEnv      string        `default:"SRIOV_HOST_PATH" desc:"env to get mounting point in host FS"`
+	DevicePluginPath string        `default:"/var/lib/kubelet/device-plugins/" desc:"path to the device plugin directory"`
+	PodResourcesPath string        `default:"/var/lib/kubelet/pod-resources/" desc:"path to the pod resources directory"`
 }
 
 func main() {
@@ -77,6 +84,17 @@ func main() {
 	}
 
 	log.Entry(ctx).Infof("Config: %#v", config)
+
+	// Start device plugin server
+	manager := k8s.NewManager(config.DevicePluginPath, config.PodResourcesPath)
+	if err := deviceplugin.StartServer(ctx, &deviceplugin.ServerConfig{
+		ResourceName:  config.Name,
+		ResourceCount: config.ResourceCount,
+		HostBaseDir:   config.HostBaseDir,
+		HostPathEnv:   config.HostPathEnv,
+	}, manager); err != nil {
+		logrus.Fatalf("failed to start a device plugin server: %+v", err)
+	}
 
 	// Get a X509Source
 	source, err := workloadapi.NewX509Source(ctx)

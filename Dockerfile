@@ -19,4 +19,10 @@ COPY . .
 RUN go build -o /bin/forwarder .
 
 FROM build as test
-CMD go test -test.v ./...
+COPY ./test ./test
+RUN go build -o k8s_api_stub ./test/applications/k8s
+RUN mkdir -p ./k8s-stub/device-plugins
+ENV NSM_DEVICEPLUGINPATH=/build/k8s-stub/device-plugins
+RUN mkdir -p ./k8s-stub/pod-resources
+ENV NSM_PODRESOURCESPATH=/build/k8s-stub/pod-resources
+CMD ["/bin/bash", "-c", "./k8s_api_stub > k8s_api_stub.out & go test -test.v ./..."]
