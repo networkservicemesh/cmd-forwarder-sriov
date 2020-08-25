@@ -14,8 +14,8 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-// Package tools provide different tools
-package tools
+// Package socketpath provides unix socket path helping tools
+package socketpath
 
 import (
 	"net"

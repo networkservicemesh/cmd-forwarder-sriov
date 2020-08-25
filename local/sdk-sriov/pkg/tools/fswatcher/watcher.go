@@ -14,7 +14,8 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-package tools
+// Package fswatcher provides tools for FS watching
+package fswatcher
 
 import "github.com/fsnotify/fsnotify"
 
