@@ -21,12 +21,9 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"os"
-	"path"
 	"sync"
 	"time"
 
-	"github.com/google/uuid"
 	"github.com/networkservicemesh/sdk/pkg/tools/log"
 	pluginapi "k8s.io/kubelet/pkg/apis/deviceplugin/v1beta1"
 	podresources "k8s.io/kubernetes/pkg/kubelet/apis/podresources/v1alpha1"
@@ -34,16 +31,13 @@ import (
 
 const (
 	resourceNamePrefix = "networkservicemesh.io/"
-	kubeletNotifyDelay = 30 * time.Second
-	vfioDir            = "/dev/vfio"
 )
 
 // ServerConfig is a struct for configuring device plugin server
 type ServerConfig struct {
-	ResourceName  string
-	ResourceCount int
-	HostBaseDir   string
-	HostPathEnv   string
+	ResourceName        string
+	ResourceCount       int
+	ResourcePollTimeout time.Duration
 }
 
 // K8sManager is a bridge interface to the k8s API
@@ -59,43 +53,30 @@ type devicePluginServer struct {
 	resourceName         string
 	resourceCount        int
 	resourcePollTimeout  time.Duration
-	hostBaseDir          string
-	hostPathEnv          string
-	devices              map[string]*device
+	devices              map[string]bool
 	updateDevicesCh      chan bool
 	lock                 sync.Mutex
 	resourceListerClient podresources.PodResourcesListerClient
 }
 
-type device struct {
-	free          bool
-	clientCleanup func()
-}
+// StartServer creates a new SR-IOV forwarder device plugin server and starts it
+func StartServer(ctx context.Context, config *ServerConfig, manager K8sManager) (pluginapi.DevicePluginServer, error) {
+	logEntry := log.Entry(ctx).WithField("devicePluginServer", "StartServer")
 
-func newDevicePluginServer(ctx context.Context, config *ServerConfig) *devicePluginServer {
-	return &devicePluginServer{
+	s := &devicePluginServer{
 		ctx:                 ctx,
 		resourceName:        resourceNamePrefix + config.ResourceName,
 		resourceCount:       config.ResourceCount,
-		resourcePollTimeout: kubeletNotifyDelay,
-		hostBaseDir:         config.HostBaseDir,
-		hostPathEnv:         config.HostPathEnv,
-		devices:             map[string]*device{},
+		resourcePollTimeout: config.ResourcePollTimeout,
+		devices:             map[string]bool{},
 		updateDevicesCh:     make(chan bool, 1),
 	}
-}
-
-// StartServer creates a new SR-IOV forwarder device plugin server and starts it
-func StartServer(ctx context.Context, config *ServerConfig, manager K8sManager) error {
-	logEntry := log.Entry(ctx).WithField("devicePluginServer", "StartServer")
-
-	s := newDevicePluginServer(ctx, config)
 
 	logEntry.Info("get resource lister client")
 	resourceListerClient, err := manager.GetPodResourcesListerClient(ctx)
 	if err != nil {
 		logEntry.Error("failed to get resource lister client")
-		return err
+		return nil, err
 	}
 	s.resourceListerClient = resourceListerClient
 
@@ -103,7 +84,7 @@ func StartServer(ctx context.Context, config *ServerConfig, manager K8sManager) 
 	socket, err := manager.StartDeviceServer(s.ctx, s)
 	if err != nil {
 		logEntry.Error("error starting server")
-		return err
+		return nil, err
 	}
 
 	logEntry.Info("registering server")
@@ -113,14 +94,14 @@ func StartServer(ctx context.Context, config *ServerConfig, manager K8sManager) 
 		ResourceName: s.resourceName,
 	}); err != nil {
 		logEntry.Error("error registering server")
-		return err
+		return nil, err
 	}
 
 	if err := s.monitorKubeletRestart(manager, socket); err != nil {
 		logEntry.Warnf("error monitoring kubelet restart: %+v", err)
 	}
 
-	return nil
+	return s, nil
 }
 
 func (s *devicePluginServer) monitorKubeletRestart(manager K8sManager, socket string) error {
@@ -210,17 +191,13 @@ func (s *devicePluginServer) updateDevices(idsInUse map[string]bool) {
 	defer s.lock.Unlock()
 
 	var freeCount int
-	for id, device := range s.devices {
+	for id, free := range s.devices {
 		switch {
 		case idsInUse[id]:
-			device.free = false
-		case !device.free:
-			device.free = true
+			s.devices[id] = false
+		case !free:
+			s.devices[id] = true
 		default:
-			if device.clientCleanup != nil {
-				device.clientCleanup()
-				device.clientCleanup = nil
-			}
 			if freeCount < s.resourceCount {
 				freeCount++
 			} else {
@@ -232,9 +209,7 @@ func (s *devicePluginServer) updateDevices(idsInUse map[string]bool) {
 	for i := 0; freeCount < s.resourceCount; i++ {
 		id := fmt.Sprintf("%s/%v", s.resourceName, i)
 		if _, ok := s.devices[id]; !ok {
-			s.devices[id] = &device{
-				free: true,
-			}
+			s.devices[id] = true
 			freeCount++
 		}
 	}
@@ -258,30 +233,13 @@ func (s *devicePluginServer) Allocate(_ context.Context, request *pluginapi.Allo
 		ContainerResponses: make([]*pluginapi.ContainerAllocateResponse, len(request.ContainerRequests)),
 	}
 
-	devices := map[string]*device{}
+	devices := map[string]bool{}
 	for i, container := range request.ContainerRequests {
-		hostPath := path.Join(s.hostBaseDir, uuid.New().String())
-		_ = os.RemoveAll(hostPath)
-
-		for k, id := range container.DevicesIDs {
-			devices[id] = &device{
-				free: false,
-			}
-			if k == 0 {
-				devices[id].clientCleanup = func() { _ = os.RemoveAll(hostPath) }
-			}
+		for _, id := range container.DevicesIDs {
+			devices[id] = false
 		}
 
-		response.ContainerResponses[i] = &pluginapi.ContainerAllocateResponse{
-			Envs: map[string]string{
-				s.hostPathEnv: hostPath,
-			},
-			Mounts: []*pluginapi.Mount{{
-				ContainerPath: vfioDir,
-				HostPath:      hostPath,
-				ReadOnly:      false,
-			}},
-		}
+		response.ContainerResponses[i] = &pluginapi.ContainerAllocateResponse{}
 	}
 
 	if err := s.useDevices(devices); err != nil {
@@ -296,7 +254,7 @@ func (s *devicePluginServer) Allocate(_ context.Context, request *pluginapi.Allo
 	return response, nil
 }
 
-func (s *devicePluginServer) useDevices(devices map[string]*device) error {
+func (s *devicePluginServer) useDevices(devices map[string]bool) error {
 	s.lock.Lock()
 	defer s.lock.Unlock()
 
@@ -307,9 +265,6 @@ func (s *devicePluginServer) useDevices(devices map[string]*device) error {
 	}
 
 	for id, device := range devices {
-		if s.devices[id].clientCleanup != nil {
-			s.devices[id].clientCleanup()
-		}
 		s.devices[id] = device
 	}
 

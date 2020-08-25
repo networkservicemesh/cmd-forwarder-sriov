@@ -26,7 +26,7 @@ import (
 	"google.golang.org/grpc"
 	pluginapi "k8s.io/kubelet/pkg/apis/deviceplugin/v1beta1"
 
-	"github.com/networkservicemesh/cmd-forwarder-sriov/local/sdk-sriov/pkg/tools"
+	"github.com/networkservicemesh/cmd-forwarder-sriov/local/sdk-sriov/pkg/tools/socketpath"
 )
 
 type registrationServer struct {
@@ -43,7 +43,7 @@ func StartRegistrationServer(devicePluginPath string, server *grpc.Server) {
 func (rs *registrationServer) Register(ctx context.Context, request *pluginapi.RegisterRequest) (*pluginapi.Empty, error) {
 	logEntry := log.Entry(ctx).WithField("registrationServer", "Register")
 
-	socketPath := tools.SocketPath(path.Join(rs.devicePluginPath, request.Endpoint))
+	socketPath := socketpath.SocketPath(path.Join(rs.devicePluginPath, request.Endpoint))
 	socketURL := grpcutils.AddressToURL(socketPath)
 	conn, err := grpc.DialContext(ctx, socketURL.String(), grpc.WithInsecure())
 	if err != nil {

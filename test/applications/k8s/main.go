@@ -31,7 +31,7 @@ import (
 	"github.com/sirupsen/logrus"
 	"google.golang.org/grpc"
 
-	"github.com/networkservicemesh/cmd-forwarder-sriov/local/sdk-sriov/pkg/tools"
+	"github.com/networkservicemesh/cmd-forwarder-sriov/local/sdk-sriov/pkg/tools/socketpath"
 	"github.com/networkservicemesh/cmd-forwarder-sriov/test/applications/k8s/deviceplugin"
 	"github.com/networkservicemesh/cmd-forwarder-sriov/test/applications/k8s/podresources"
 )
@@ -75,13 +75,13 @@ func main() {
 	// Create and start device plugin server
 	grpcServer := grpc.NewServer()
 	deviceplugin.StartRegistrationServer(config.DevicePluginPath, grpcServer)
-	socketPath := tools.SocketPath(path.Join(config.DevicePluginPath, kubeletSocket))
+	socketPath := socketpath.SocketPath(path.Join(config.DevicePluginPath, kubeletSocket))
 	exitOnErr(ctx, cancel, grpcutils.ListenAndServe(ctx, grpcutils.AddressToURL(socketPath), grpcServer))
 
 	// Create and start pod resources server
 	grpcServer = grpc.NewServer()
 	podresources.StartPodResourcesListerServer(grpcServer)
-	socketPath = tools.SocketPath(path.Join(config.PodResourcesPath, kubeletSocket))
+	socketPath = socketpath.SocketPath(path.Join(config.PodResourcesPath, kubeletSocket))
 	exitOnErr(ctx, cancel, grpcutils.ListenAndServe(ctx, grpcutils.AddressToURL(socketPath), grpcServer))
 
 	log.Entry(ctx).Infof("Startup completed in %v", time.Since(starttime))
