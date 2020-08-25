@@ -14,7 +14,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-package k8s
+package k8s_test
 
 import (
 	"context"
@@ -25,14 +25,19 @@ import (
 
 	"github.com/stretchr/testify/assert"
 
+	"github.com/networkservicemesh/cmd-forwarder-sriov/local/sdk-sriov/pkg/k8s"
 	testingtools "github.com/networkservicemesh/cmd-forwarder-sriov/test/tools"
+)
+
+const (
+	kubeletSocket = "kubelet.sock"
 )
 
 func TestDevicePluginManager_MonitorKubeletRestart(t *testing.T) {
 	devicePluginPath := path.Join(os.TempDir(), t.Name())
 	devicePluginSocket := path.Join(devicePluginPath, kubeletSocket)
 
-	dpm := NewManager(devicePluginPath, "")
+	dpm := k8s.NewManager(devicePluginPath, "")
 
 	_ = os.RemoveAll(devicePluginPath)
 	err := os.MkdirAll(devicePluginPath, os.ModeDir|os.ModePerm)

@@ -14,7 +14,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-package deviceplugin
+package deviceplugin_test
 
 import (
 	"context"
@@ -30,42 +30,50 @@ import (
 	pluginapi "k8s.io/kubelet/pkg/apis/deviceplugin/v1beta1"
 	podresources "k8s.io/kubernetes/pkg/kubelet/apis/podresources/v1alpha1"
 
+	"github.com/networkservicemesh/cmd-forwarder-sriov/local/sdk-sriov/pkg/k8s/deviceplugin"
 	testingtools "github.com/networkservicemesh/cmd-forwarder-sriov/test/tools"
 )
 
 const (
-	resourceName    = "resource"
-	resourceCount   = 10
-	hostBaseDir     = "/tmp/test-networkservicemesh"
-	hostPathEnv     = "HOST_PATH"
-	socket          = "socket"
-	containersCount = 5
+	resourceName       = "resource"
+	resourceCount      = 10
+	socket             = "socket"
+	resourceNamePrefix = "networkservicemesh.io/"
+	containersCount    = 5
 )
 
-var config = &ServerConfig{
-	ResourceName:  resourceName,
-	ResourceCount: resourceCount,
-	HostBaseDir:   hostBaseDir,
-	HostPathEnv:   hostPathEnv,
+var config = &deviceplugin.ServerConfig{
+	ResourceName:        resourceName,
+	ResourceCount:       resourceCount,
+	ResourcePollTimeout: 10 * time.Millisecond,
 }
 
-func TestDevicePluginServer_Start(t *testing.T) {
+func initMocks(resetCh chan bool, resp *podresources.ListPodResourcesResponse) *managerMock {
 	m := &managerMock{}
 	m.mock.On("StartDeviceServer", mock.Anything, mock.Anything).
 		Return(socket, nil)
 	m.mock.On("RegisterDeviceServer", mock.Anything, mock.Anything).
 		Return(nil)
 
-	resetCh := make(chan bool)
 	m.mock.On("MonitorKubeletRestart", mock.Anything).
 		Return(resetCh, nil)
 
-	m.mock.On("GetPodResourcesListerClient", mock.Anything).
-		Return(struct {
-			podresources.PodResourcesListerClient
-		}{}, nil)
+	prlc := &podResourcesListerClientMock{}
+	prlc.mock.On("List", mock.Anything, mock.Anything, mock.Anything).
+		Return(resp, nil)
 
-	err := StartServer(context.TODO(), config, m)
+	m.mock.On("GetPodResourcesListerClient", mock.Anything).
+		Return(prlc, nil)
+
+	return m
+}
+
+func TestDevicePluginServer_Start(t *testing.T) {
+	resetCh := make(chan bool)
+
+	m := initMocks(resetCh, &podresources.ListPodResourcesResponse{})
+
+	_, err := deviceplugin.StartServer(context.TODO(), config, m)
 	assert.Nil(t, err)
 
 	m.mock.AssertCalled(t, "StartDeviceServer", mock.Anything, mock.Anything)
@@ -73,7 +81,7 @@ func TestDevicePluginServer_Start(t *testing.T) {
 		return request.Endpoint == socket && request.ResourceName == resourceNamePrefix+resourceName
 	}))
 
-	testingtools.WriteBoolChan(t, resetCh, true, 10*time.Second)
+	testingtools.WriteBoolChan(t, resetCh, true, time.Second)
 	assert.Eventually(t, func() bool {
 		var count int
 		for i := range m.mock.Calls {
@@ -82,20 +90,17 @@ func TestDevicePluginServer_Start(t *testing.T) {
 			}
 		}
 		return count == 2
-	}, 10*time.Second, 10*time.Millisecond)
+	}, time.Second, 10*time.Millisecond)
 }
 
 func TestDevicePluginServer_ListAndWatch(t *testing.T) {
 	resp := &podresources.ListPodResourcesResponse{}
 	*resp = *listPodResourcesResponse([]string{})
 
-	prlc := &podResourcesListerClientMock{}
-	prlc.mock.On("List", mock.Anything, mock.Anything, mock.Anything).
-		Return(resp, nil)
+	m := initMocks(make(chan bool), resp)
 
-	dps := newDevicePluginServer(context.TODO(), config)
-	dps.resourcePollTimeout = 10 * time.Millisecond
-	dps.resourceListerClient = prlc
+	dps, err := deviceplugin.StartServer(context.TODO(), config, m)
+	assert.Nil(t, err)
 
 	respCh := make(chan *pluginapi.ListAndWatchResponse)
 	lws := &listAndWatchServer{
@@ -116,26 +121,12 @@ func TestDevicePluginServer_ListAndWatch(t *testing.T) {
 	*resp = *listPodResourcesResponse(devices(0, 10))
 	validateResponse(t, respCh, resourceCount+10)
 
-	areCleanedUp := make([]bool, 10)
-	for i, id := range devices(0, 10) {
-		j := i
-		dps.devices[id].clientCleanup = func() { areCleanedUp[j] = true }
-	}
-
 	// 3. Free some devices
 	*resp = *listPodResourcesResponse(devices(5, 10))
 	validateResponse(t, respCh, resourceCount+5)
 
-	for i := 0; i < 10; i++ {
-		assert.True(t, areCleanedUp[i] == (i < 5))
-	}
-
 	*resp = *listPodResourcesResponse([]string{})
 	validateResponse(t, respCh, resourceCount)
-
-	for i := 5; i < 10; i++ {
-		assert.True(t, areCleanedUp[i])
-	}
 }
 
 func listPodResourcesResponse(ids []string) *podresources.ListPodResourcesResponse {
@@ -190,16 +181,16 @@ func devices(from, to int) []string {
 }
 
 func TestDevicePluginServer_Allocate(t *testing.T) {
-	dps := newDevicePluginServer(context.TODO(), config)
+	m := initMocks(make(chan bool), listPodResourcesResponse(devices(0, containersCount)))
 
-	areCleanedUp := make([]bool, containersCount)
-	for i, id := range devices(0, containersCount) {
-		j := i
-		dps.devices[id] = &device{
-			free:          false,
-			clientCleanup: func() { areCleanedUp[j] = true },
-		}
-	}
+	dps, err := deviceplugin.StartServer(context.TODO(), config, m)
+	assert.Nil(t, err)
+
+	go func() {
+		_ = dps.ListAndWatch(&pluginapi.Empty{}, &listAndWatchServer{
+			respCh: make(chan *pluginapi.ListAndWatchResponse, 100),
+		})
+	}()
 
 	req := &pluginapi.AllocateRequest{}
 	for i := 0; i < containersCount; i++ {
@@ -208,34 +199,10 @@ func TestDevicePluginServer_Allocate(t *testing.T) {
 		})
 	}
 
-	response, err := dps.Allocate(context.TODO(), req)
-	assert.Nil(t, err)
-	assert.Condition(t, func() bool {
-		if len(response.ContainerResponses) != containersCount {
-			return false
-		}
-		for _, container := range response.ContainerResponses {
-			if !testContainerResponse(container) {
-				return false
-			}
-		}
-		return true
-	})
-
-	for _, isCleanedUp := range areCleanedUp {
-		assert.True(t, isCleanedUp)
-	}
-}
-
-func testContainerResponse(container *pluginapi.ContainerAllocateResponse) bool {
-	if hostPath, ok := container.Envs[hostPathEnv]; ok {
-		for _, mount := range container.Mounts {
-			if mount.ContainerPath == vfioDir && mount.HostPath == hostPath && !mount.ReadOnly {
-				return true
-			}
-		}
-	}
-	return false
+	assert.Eventually(t, func() bool {
+		response, err := dps.Allocate(context.TODO(), req)
+		return err == nil && len(response.ContainerResponses) == containersCount
+	}, time.Second, 10*time.Millisecond)
 }
 
 type managerMock struct {

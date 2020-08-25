@@ -46,15 +46,14 @@ import (
 
 // Config - configuration for cmd-forwarder-sriov
 type Config struct {
-	Name             string        `default:"forwarder" desc:"Name of Endpoint"`
-	ListenOn         url.URL       `default:"unix:///listen.on.socket" desc:"url to listen on" split_words:"true"`
-	ConnectTo        url.URL       `default:"unix:///connect.to.socket" desc:"url to connect to" split_words:"true"`
-	MaxTokenLifetime time.Duration `default:"24h" desc:"maximum lifetime of tokens" split_words:"true"`
-	ResourceCount    int           `default:"10" desc:"device plugin resource count"`
-	HostBaseDir      string        `default:"/networkservicemesh/sriov" desc:"host base directory for clients mounts"`
-	HostPathEnv      string        `default:"SRIOV_HOST_PATH" desc:"env to get mounting point in host FS"`
-	DevicePluginPath string        `default:"/var/lib/kubelet/device-plugins/" desc:"path to the device plugin directory"`
-	PodResourcesPath string        `default:"/var/lib/kubelet/pod-resources/" desc:"path to the pod resources directory"`
+	Name                string        `default:"forwarder" desc:"Name of Endpoint"`
+	ListenOn            url.URL       `default:"unix:///listen.on.socket" desc:"url to listen on" split_words:"true"`
+	ConnectTo           url.URL       `default:"unix:///connect.to.socket" desc:"url to connect to" split_words:"true"`
+	MaxTokenLifetime    time.Duration `default:"24h" desc:"maximum lifetime of tokens" split_words:"true"`
+	ResourceCount       int           `default:"10" desc:"device plugin resource count" split_words:"true"`
+	ResourcePollTimeout time.Duration `default:"30s" desc:"device plugin polling timeout" split_words:"true"`
+	DevicePluginPath    string        `default:"/var/lib/kubelet/device-plugins/" desc:"path to the device plugin directory" split_words:"true"`
+	PodResourcesPath    string        `default:"/var/lib/kubelet/pod-resources/" desc:"path to the pod resources directory" split_words:"true"`
 }
 
 func main() {
@@ -87,11 +86,10 @@ func main() {
 
 	// Start device plugin server
 	manager := k8s.NewManager(config.DevicePluginPath, config.PodResourcesPath)
-	if err := deviceplugin.StartServer(ctx, &deviceplugin.ServerConfig{
-		ResourceName:  config.Name,
-		ResourceCount: config.ResourceCount,
-		HostBaseDir:   config.HostBaseDir,
-		HostPathEnv:   config.HostPathEnv,
+	if _, err := deviceplugin.StartServer(ctx, &deviceplugin.ServerConfig{
+		ResourceName:        config.Name,
+		ResourceCount:       config.ResourceCount,
+		ResourcePollTimeout: config.ResourcePollTimeout,
 	}, manager); err != nil {
 		logrus.Fatalf("failed to start a device plugin server: %+v", err)
 	}

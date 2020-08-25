@@ -31,7 +31,8 @@ import (
 	pluginapi "k8s.io/kubelet/pkg/apis/deviceplugin/v1beta1"
 	podresources "k8s.io/kubernetes/pkg/kubelet/apis/podresources/v1alpha1"
 
-	"github.com/networkservicemesh/cmd-forwarder-sriov/local/sdk-sriov/pkg/tools"
+	"github.com/networkservicemesh/cmd-forwarder-sriov/local/sdk-sriov/pkg/tools/fswatcher"
+	"github.com/networkservicemesh/cmd-forwarder-sriov/local/sdk-sriov/pkg/tools/socketpath"
 )
 
 const (
@@ -60,9 +61,9 @@ func (km *Manager) StartDeviceServer(ctx context.Context, deviceServer pluginapi
 	logEntry := log.Entry(ctx).WithField("Manager", "StartDeviceServer")
 
 	socket := uuid.New().String()
-	socketPath := tools.SocketPath(path.Join(km.devicePluginPath, socket))
+	socketPath := socketpath.SocketPath(path.Join(km.devicePluginPath, socket))
 	logEntry.Infof("socket = %v", socket)
-	if err := tools.SocketCleanup(socketPath); err != nil {
+	if err := socketpath.SocketCleanup(socketPath); err != nil {
 		return "", err
 	}
 
@@ -97,7 +98,7 @@ func (km *Manager) StartDeviceServer(ctx context.Context, deviceServer pluginapi
 func (km *Manager) RegisterDeviceServer(ctx context.Context, request *pluginapi.RegisterRequest) error {
 	logEntry := log.Entry(ctx).WithField("Manager", "RegisterDeviceServer")
 
-	socketURL := grpcutils.AddressToURL(tools.SocketPath(km.devicePluginSocket))
+	socketURL := grpcutils.AddressToURL(socketpath.SocketPath(km.devicePluginSocket))
 	conn, err := grpc.DialContext(ctx, socketURL.String(), grpc.WithInsecure())
 	if err != nil {
 		return errors.Wrap(err, "cannot connect to device plugin kubelet service")
@@ -118,7 +119,7 @@ func (km *Manager) RegisterDeviceServer(ctx context.Context, request *pluginapi.
 func (km *Manager) MonitorKubeletRestart(ctx context.Context) (chan bool, error) {
 	logEntry := log.Entry(ctx).WithField("Manager", "MonitorKubeletRestart")
 
-	watcher, err := tools.WatchOn(km.devicePluginPath)
+	watcher, err := fswatcher.WatchOn(km.devicePluginPath)
 	if err != nil {
 		logEntry.Errorf("failed to watch on %v", km.devicePluginPath)
 		return nil, err
@@ -158,7 +159,7 @@ func (km *Manager) MonitorKubeletRestart(ctx context.Context) (chan bool, error)
 func (km *Manager) GetPodResourcesListerClient(ctx context.Context) (podresources.PodResourcesListerClient, error) {
 	logEntry := log.Entry(ctx).WithField("Manager", "GetPodResourcesListerClient")
 
-	socketURL := grpcutils.AddressToURL(tools.SocketPath(km.podResourcesSocket))
+	socketURL := grpcutils.AddressToURL(socketpath.SocketPath(km.podResourcesSocket))
 	conn, err := grpc.DialContext(ctx, socketURL.String(), grpc.WithInsecure())
 	if err != nil {
 		return nil, errors.Wrap(err, "cannot connect to pod resources kubelet service")
