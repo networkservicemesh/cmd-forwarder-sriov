@@ -18,18 +18,35 @@
 package sriov
 
 import (
+	"context"
 	"net/url"
 
-	"github.com/networkservicemesh/api/pkg/api/networkservice"
+	"google.golang.org/grpc"
 
+	"github.com/networkservicemesh/api/pkg/api/networkservice"
+	"github.com/networkservicemesh/api/pkg/api/networkservice/mechanisms/kernel"
+	vfiomech "github.com/networkservicemesh/api/pkg/api/networkservice/mechanisms/vfio"
+	"github.com/networkservicemesh/sdk-kernel/pkg/kernel/networkservice/connectioncontext"
+	"github.com/networkservicemesh/sdk-kernel/pkg/kernel/networkservice/inject"
+	"github.com/networkservicemesh/sdk-kernel/pkg/kernel/networkservice/netns"
+	"github.com/networkservicemesh/sdk-kernel/pkg/kernel/networkservice/rename"
+	"github.com/networkservicemesh/sdk-sriov/pkg/networkservice/common/resourcepool"
+	"github.com/networkservicemesh/sdk-sriov/pkg/networkservice/common/vfconfig"
+	"github.com/networkservicemesh/sdk-sriov/pkg/networkservice/mechanisms/vfio"
+	"github.com/networkservicemesh/sdk-sriov/pkg/sriov"
+	pci "github.com/networkservicemesh/sdk-sriov/pkg/sriov/resourcepool"
 	"github.com/networkservicemesh/sdk/pkg/networkservice/chains/client"
 	"github.com/networkservicemesh/sdk/pkg/networkservice/chains/endpoint"
 	"github.com/networkservicemesh/sdk/pkg/networkservice/common/clienturl"
 	"github.com/networkservicemesh/sdk/pkg/networkservice/common/connect"
+	"github.com/networkservicemesh/sdk/pkg/networkservice/common/mechanisms"
+	"github.com/networkservicemesh/sdk/pkg/networkservice/common/mechanisms/recvfd"
 	"github.com/networkservicemesh/sdk/pkg/networkservice/core/adapters"
+	"github.com/networkservicemesh/sdk/pkg/networkservice/core/chain"
 	"github.com/networkservicemesh/sdk/pkg/tools/addressof"
 	"github.com/networkservicemesh/sdk/pkg/tools/token"
-	"google.golang.org/grpc"
+
+	"github.com/networkservicemesh/cmd-forwarder-sriov/local/sdk-sriov/pkg/networkservice/common/resetmechanism"
 )
 
 type sriovServer struct {
@@ -42,20 +59,53 @@ type sriovServer struct {
 //             -tokenGenerator - token.GeneratorFunc - generates tokens for use in Path
 //             -clientUrl - *url.URL for the talking to the NSMgr
 //             -...clientDialOptions - dialOptions for dialing the NSMgr
-func NewServer(name string, authzServer networkservice.NetworkServiceServer, tokenGenerator token.GeneratorFunc, clientURL *url.URL, clientDialOptions ...grpc.DialOption) endpoint.Endpoint {
+func NewServer(
+	ctx context.Context,
+	name string,
+	authzServer networkservice.NetworkServiceServer,
+	tokenGenerator token.GeneratorFunc,
+	pciConfig *pci.Config,
+	functions map[sriov.PCIFunction][]sriov.PCIFunction,
+	binders map[uint][]sriov.DriverBinder,
+	vfioDir, cgroupBaseDir string,
+	clientURL *url.URL,
+	clientDialOptions ...grpc.DialOption,
+) endpoint.Endpoint {
 	rv := sriovServer{}
+
 	rv.Endpoint = endpoint.NewServer(
+		ctx,
 		name,
 		authzServer,
 		tokenGenerator,
+		recvfd.NewServer(),
+		vfconfig.NewServer(),
+		resourcepool.NewInitServer(functions, pciConfig),
+		resetmechanism.NewServer(
+			mechanisms.NewServer(map[string]networkservice.NetworkServiceServer{
+				kernel.MECHANISM: chain.NewNetworkServiceServer(
+					resourcepool.NewServer(sriov.KernelDriver, functions, binders),
+					rename.NewServer(),
+					inject.NewServer(),
+				),
+				vfiomech.MECHANISM: chain.NewNetworkServiceServer(
+					resourcepool.NewServer(sriov.VfioPCIDriver, functions, binders),
+					vfio.NewServer(vfioDir, cgroupBaseDir),
+				),
+			}),
+		),
 		clienturl.NewServer(clientURL),
-		connect.NewServer(client.NewClientFactory(
+		connect.NewServer(ctx, client.NewClientFactory(
 			name,
 			// What to call onHeal
 			addressof.NetworkServiceClient(adapters.NewServerToClient(rv)),
 			tokenGenerator),
 			clientDialOptions...,
 		),
+		netns.NewServer(),
+		rename.NewServer(),
+		connectioncontext.NewServer(),
 	)
+
 	return rv
 }
