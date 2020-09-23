@@ -5,22 +5,27 @@ go 1.14
 require (
 	github.com/antonfisher/nested-logrus-formatter v1.1.0
 	github.com/edwarnicke/exechelper v1.0.1
-	github.com/fsnotify/fsnotify v1.4.7
+	github.com/edwarnicke/grpcfd v0.0.0-20200920223154-d5b6e1f19bd0
+	github.com/fsnotify/fsnotify v1.4.9
+	github.com/golang/protobuf v1.4.2
 	github.com/google/uuid v1.1.1
 	github.com/kelseyhightower/envconfig v1.4.0
-	github.com/networkservicemesh/api v0.0.0-20200525170518-89690ec70489
-	github.com/networkservicemesh/sdk v0.0.0-20200608153620-b31fd268b04f
+	github.com/networkservicemesh/api v0.0.0-20200915182332-e5aee3ba99ef
+	github.com/networkservicemesh/sdk v0.0.0-20200923013015-9dc85b12f2ff
+	github.com/networkservicemesh/sdk-kernel v0.0.0-20200812213432-0d98a3e5bc3e
+	github.com/networkservicemesh/sdk-sriov v0.0.0-20200824110522-e98e46740475
 	github.com/pkg/errors v0.9.1
 	github.com/sirupsen/logrus v1.6.0
 	github.com/spiffe/go-spiffe/v2 v2.0.0-alpha.4.0.20200528145730-dc11d0c74e85
-	github.com/stretchr/testify v1.5.1
-	google.golang.org/grpc v1.29.1
-	gopkg.in/yaml.v2 v2.3.0 // indirect
+	github.com/stretchr/testify v1.6.1
+	google.golang.org/grpc v1.32.0
 	k8s.io/kubelet v0.18.6
 	k8s.io/kubernetes v1.18.6
 )
 
 replace (
+	github.com/networkservicemesh/sdk-kernel => github.com/Bolodya1997/sdk-kernel v0.0.0-20200920100707-26d47ac0b446
+	github.com/networkservicemesh/sdk-sriov => github.com/Bolodya1997/sdk-sriov v0.0.0-20200918033623-064be70eca98
 	k8s.io/api => k8s.io/api v0.18.6
 	k8s.io/apiextensions-apiserver => k8s.io/apiextensions-apiserver v0.18.6
 	k8s.io/apimachinery => k8s.io/apimachinery v0.18.7-rc.0
