@@ -12,7 +12,7 @@ require (
 	github.com/kelseyhightower/envconfig v1.4.0
 	github.com/networkservicemesh/api v0.0.0-20200915182332-e5aee3ba99ef
 	github.com/networkservicemesh/sdk v0.0.0-20200923013015-9dc85b12f2ff
-	github.com/networkservicemesh/sdk-kernel v0.0.0-20200812213432-0d98a3e5bc3e
+	github.com/networkservicemesh/sdk-kernel v0.0.0-20200919062851-bc1bb7569c24
 	github.com/networkservicemesh/sdk-sriov v0.0.0-20200824110522-e98e46740475
 	github.com/pkg/errors v0.9.1
 	github.com/sirupsen/logrus v1.6.0
@@ -24,8 +24,8 @@ require (
 )
 
 replace (
-	github.com/networkservicemesh/sdk-kernel => github.com/Bolodya1997/sdk-kernel v0.0.0-20200920100707-26d47ac0b446
-	github.com/networkservicemesh/sdk-sriov => github.com/Bolodya1997/sdk-sriov v0.0.0-20200918033623-064be70eca98
+	github.com/networkservicemesh/sdk-kernel => github.com/Bolodya1997/sdk-kernel v0.0.0-20200924004415-0957ddeae2af
+	github.com/networkservicemesh/sdk-sriov => github.com/Bolodya1997/sdk-sriov v0.0.0-20200924001145-8266971efa91
 	k8s.io/api => k8s.io/api v0.18.6
 	k8s.io/apiextensions-apiserver => k8s.io/apiextensions-apiserver v0.18.6
 	k8s.io/apimachinery => k8s.io/apimachinery v0.18.7-rc.0

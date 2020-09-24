@@ -12,20 +12,13 @@ RUN go run github.com/edwarnicke/dl \
 FROM go as build
 WORKDIR /build
 COPY go.mod go.sum ./
-COPY ./local ./local
 COPY ./internal/imports ./internal/imports
 RUN go build ./internal/imports
 COPY . .
 RUN go build -o /bin/forwarder .
 
 FROM build as test
-COPY ./test ./test
-RUN go build -o k8s_api_stub ./test/applications/k8s
-RUN mkdir -p ./k8s-stub/device-plugins
-ENV NSM_DEVICEPLUGINPATH=/build/k8s-stub/device-plugins
-RUN mkdir -p ./k8s-stub/pod-resources
-ENV NSM_PODRESOURCESPATH=/build/k8s-stub/pod-resources
-CMD ["/bin/bash", "-c", "./k8s_api_stub > k8s_api_stub.out & go test -test.v ./..."]
+CMD go test -test.v ./...
 
 FROM alpine as runtime
 COPY --from=build /bin/forwarder /bin/forwarder
