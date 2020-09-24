@@ -15,7 +15,7 @@
 // limitations under the License.
 
 // Package tools provides tools for testing
-package tools
+package _chan
 
 import (
 	"testing"

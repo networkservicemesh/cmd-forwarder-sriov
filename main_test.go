@@ -20,29 +20,36 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"path"
 	"path/filepath"
 	"testing"
 	"time"
 
+	nested "github.com/antonfisher/nested-logrus-formatter"
+	"github.com/edwarnicke/exechelper"
+	"github.com/kelseyhightower/envconfig"
+	"github.com/sirupsen/logrus"
 	"github.com/spiffe/go-spiffe/v2/bundle/x509bundle"
 	"github.com/spiffe/go-spiffe/v2/spiffetls/tlsconfig"
 	"github.com/spiffe/go-spiffe/v2/svid/x509svid"
 	"github.com/spiffe/go-spiffe/v2/workloadapi"
-
-	nested "github.com/antonfisher/nested-logrus-formatter"
-	"github.com/edwarnicke/exechelper"
-	"github.com/sirupsen/logrus"
 	"github.com/stretchr/testify/require"
 	"github.com/stretchr/testify/suite"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials"
 	"google.golang.org/grpc/health/grpc_health_v1"
 
-	"github.com/kelseyhightower/envconfig"
-
+	"github.com/networkservicemesh/sdk/pkg/tools/grpcutils"
 	"github.com/networkservicemesh/sdk/pkg/tools/spire"
 
 	main "github.com/networkservicemesh/cmd-forwarder-sriov"
+	"github.com/networkservicemesh/cmd-forwarder-sriov/local/sdk-sriov/pkg/k8s/k8stest/deviceplugin"
+	"github.com/networkservicemesh/cmd-forwarder-sriov/local/sdk-sriov/pkg/k8s/k8stest/podresources"
+	"github.com/networkservicemesh/cmd-forwarder-sriov/local/sdk-sriov/pkg/tools/socketpath"
+)
+
+const (
+	kubeletSocket = "kubelet.sock"
 )
 
 type ForwarderTestSuite struct {
@@ -84,6 +91,12 @@ func (f *ForwarderTestSuite) SetupSuite() {
 	}
 	logrus.Infof("SVID: %q", svid.ID)
 
+	// Get config from env
+	require.NoError(f.T(), envconfig.Process("nsm", &f.config))
+
+	// Setup k8s stubs
+	f.setupK8sStubs()
+
 	// Run system under test (sut)
 	cmdStr := "forwarder"
 	f.sutErrCh = exechelper.Start(cmdStr,
@@ -93,9 +106,20 @@ func (f *ForwarderTestSuite) SetupSuite() {
 		exechelper.WithStderr(os.Stderr),
 	)
 	require.Len(f.T(), f.sutErrCh, 0)
+}
 
-	// Get config from env
-	require.NoError(f.T(), envconfig.Process("nsm", &f.config))
+func (f *ForwarderTestSuite) setupK8sStubs() {
+	// Create and start device plugin server
+	grpcServer := grpc.NewServer()
+	deviceplugin.StartRegistrationServer(f.config.DevicePluginPath, grpcServer)
+	socketPath := socketpath.SocketPath(path.Join(f.config.DevicePluginPath, kubeletSocket))
+	require.Len(f.T(), grpcutils.ListenAndServe(f.ctx, grpcutils.AddressToURL(socketPath), grpcServer), 1)
+
+	// Create and start pod resources server
+	grpcServer = grpc.NewServer()
+	podresources.StartPodResourcesListerServer(grpcServer)
+	socketPath = socketpath.SocketPath(path.Join(f.config.PodResourcesPath, kubeletSocket))
+	require.Len(f.T(), grpcutils.ListenAndServe(f.ctx, grpcutils.AddressToURL(socketPath), grpcServer), 1)
 }
 
 func (f *ForwarderTestSuite) TearDownSuite() {

@@ -27,11 +27,12 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
 	"google.golang.org/grpc"
+
 	pluginapi "k8s.io/kubelet/pkg/apis/deviceplugin/v1beta1"
 	podresources "k8s.io/kubernetes/pkg/kubelet/apis/podresources/v1alpha1"
 
 	"github.com/networkservicemesh/cmd-forwarder-sriov/local/sdk-sriov/pkg/k8s/deviceplugin"
-	testingtools "github.com/networkservicemesh/cmd-forwarder-sriov/test/tools"
+	"github.com/networkservicemesh/cmd-forwarder-sriov/local/sdk-sriov/pkg/tools/chan"
 )
 
 const (
@@ -81,7 +82,7 @@ func TestDevicePluginServer_Start(t *testing.T) {
 		return request.Endpoint == socket && request.ResourceName == resourceNamePrefix+resourceName
 	}))
 
-	testingtools.WriteBoolChan(t, resetCh, true, time.Second)
+	_chan.WriteBoolChan(t, resetCh, true, time.Second)
 	assert.Eventually(t, func() bool {
 		var count int
 		for i := range m.mock.Calls {
@@ -164,7 +165,7 @@ func listPodResourcesResponse(ids []string) *podresources.ListPodResourcesRespon
 }
 
 func validateResponse(t *testing.T, respCh chan *pluginapi.ListAndWatchResponse, expectedCount int) {
-	resp, ok := testingtools.ReadListAndWatchResponseChan(t, respCh, 5*time.Minute)
+	resp, ok := _chan.ReadListAndWatchResponseChan(t, respCh, 5*time.Minute)
 	assert.True(t, ok)
 	assert.Equal(t, expectedCount, len(resp.Devices))
 	for _, device := range resp.Devices {

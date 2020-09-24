@@ -26,7 +26,7 @@ import (
 	"github.com/stretchr/testify/assert"
 
 	"github.com/networkservicemesh/cmd-forwarder-sriov/local/sdk-sriov/pkg/k8s"
-	testingtools "github.com/networkservicemesh/cmd-forwarder-sriov/test/tools"
+	"github.com/networkservicemesh/cmd-forwarder-sriov/local/sdk-sriov/pkg/tools/chan"
 )
 
 const (
@@ -49,6 +49,6 @@ func TestDevicePluginManager_MonitorKubeletRestart(t *testing.T) {
 	_, err = os.Create(devicePluginSocket)
 	assert.Nil(t, err)
 
-	_, ok := testingtools.ReadBoolChan(t, monitorCh, 10*time.Second)
+	_, ok := _chan.ReadBoolChan(t, monitorCh, 10*time.Second)
 	assert.True(t, ok)
 }
