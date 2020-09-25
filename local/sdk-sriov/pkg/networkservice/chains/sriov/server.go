@@ -21,12 +21,13 @@ import (
 	"context"
 	"net/url"
 
+	"github.com/networkservicemesh/sdk-kernel/pkg/kernel/networkservice/ethernetcontext"
+	"github.com/networkservicemesh/sdk-kernel/pkg/kernel/networkservice/ipcontext"
 	"google.golang.org/grpc"
 
 	"github.com/networkservicemesh/api/pkg/api/networkservice"
 	"github.com/networkservicemesh/api/pkg/api/networkservice/mechanisms/kernel"
 	vfiomech "github.com/networkservicemesh/api/pkg/api/networkservice/mechanisms/vfio"
-	"github.com/networkservicemesh/sdk-kernel/pkg/kernel/networkservice/connectioncontext"
 	"github.com/networkservicemesh/sdk-kernel/pkg/kernel/networkservice/inject"
 	"github.com/networkservicemesh/sdk-kernel/pkg/kernel/networkservice/netns"
 	"github.com/networkservicemesh/sdk-kernel/pkg/kernel/networkservice/rename"
@@ -102,9 +103,12 @@ func NewServer(
 			tokenGenerator),
 			clientDialOptions...,
 		),
+		// we setup VF ethernet context using PF interface, so we do it in the forwarder net NS
+		ethernetcontext.NewVFServer(),
+		// now setup VF interface, so we do it in the client net NS
 		netns.NewServer(),
 		rename.NewServer(),
-		connectioncontext.NewServer(),
+		ipcontext.NewServer(),
 	)
 
 	return rv

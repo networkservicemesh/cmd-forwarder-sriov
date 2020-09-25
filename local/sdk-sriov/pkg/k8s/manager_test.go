@@ -23,10 +23,10 @@ import (
 	"testing"
 	"time"
 
-	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 
 	"github.com/networkservicemesh/cmd-forwarder-sriov/local/sdk-sriov/pkg/k8s"
-	"github.com/networkservicemesh/cmd-forwarder-sriov/local/sdk-sriov/pkg/tools/chan"
+	"github.com/networkservicemesh/cmd-forwarder-sriov/local/sdk-sriov/pkg/tools/channeltest"
 )
 
 const (
@@ -41,14 +41,14 @@ func TestDevicePluginManager_MonitorKubeletRestart(t *testing.T) {
 
 	_ = os.RemoveAll(devicePluginPath)
 	err := os.MkdirAll(devicePluginPath, os.ModeDir|os.ModePerm)
-	assert.Nil(t, err)
+	require.NoError(t, err)
 
 	monitorCh, err := dpm.MonitorKubeletRestart(context.TODO())
-	assert.Nil(t, err)
+	require.NoError(t, err)
 
 	_, err = os.Create(devicePluginSocket)
-	assert.Nil(t, err)
+	require.NoError(t, err)
 
-	_, ok := _chan.ReadBoolChan(t, monitorCh, 10*time.Second)
-	assert.True(t, ok)
+	_, ok := channeltest.ReadBoolChan(t, monitorCh, 10*time.Second)
+	require.True(t, ok)
 }

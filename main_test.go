@@ -113,13 +113,13 @@ func (f *ForwarderTestSuite) setupK8sStubs() {
 	grpcServer := grpc.NewServer()
 	deviceplugin.StartRegistrationServer(f.config.DevicePluginPath, grpcServer)
 	socketPath := socketpath.SocketPath(path.Join(f.config.DevicePluginPath, kubeletSocket))
-	require.Len(f.T(), grpcutils.ListenAndServe(f.ctx, grpcutils.AddressToURL(socketPath), grpcServer), 1)
+	require.Len(f.T(), grpcutils.ListenAndServe(f.ctx, grpcutils.AddressToURL(socketPath), grpcServer), 0)
 
 	// Create and start pod resources server
 	grpcServer = grpc.NewServer()
 	podresources.StartPodResourcesListerServer(grpcServer)
 	socketPath = socketpath.SocketPath(path.Join(f.config.PodResourcesPath, kubeletSocket))
-	require.Len(f.T(), grpcutils.ListenAndServe(f.ctx, grpcutils.AddressToURL(socketPath), grpcServer), 1)
+	require.Len(f.T(), grpcutils.ListenAndServe(f.ctx, grpcutils.AddressToURL(socketPath), grpcServer), 0)
 }
 
 func (f *ForwarderTestSuite) TearDownSuite() {

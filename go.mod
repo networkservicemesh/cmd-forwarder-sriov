@@ -10,10 +10,10 @@ require (
 	github.com/golang/protobuf v1.4.2
 	github.com/google/uuid v1.1.1
 	github.com/kelseyhightower/envconfig v1.4.0
-	github.com/networkservicemesh/api v0.0.0-20200915182332-e5aee3ba99ef
-	github.com/networkservicemesh/sdk v0.0.0-20200923013015-9dc85b12f2ff
+	github.com/networkservicemesh/api v0.0.0-20200923231758-e91e69f22959
+	github.com/networkservicemesh/sdk v0.0.0-20200923234642-595d4e79047c
 	github.com/networkservicemesh/sdk-kernel v0.0.0-20200919062851-bc1bb7569c24
-	github.com/networkservicemesh/sdk-sriov v0.0.0-20200824110522-e98e46740475
+	github.com/networkservicemesh/sdk-sriov v0.0.0-20200925074707-560e262ef600
 	github.com/pkg/errors v0.9.1
 	github.com/sirupsen/logrus v1.6.0
 	github.com/spiffe/go-spiffe/v2 v2.0.0-alpha.4.0.20200528145730-dc11d0c74e85
@@ -24,8 +24,8 @@ require (
 )
 
 replace (
-	github.com/networkservicemesh/sdk-kernel => github.com/Bolodya1997/sdk-kernel v0.0.0-20200924004415-0957ddeae2af
-	github.com/networkservicemesh/sdk-sriov => github.com/Bolodya1997/sdk-sriov v0.0.0-20200924001145-8266971efa91
+	github.com/networkservicemesh/sdk => github.com/Bolodya1997/sdk v0.0.0-20200924052138-37a5148e0c6f
+	github.com/networkservicemesh/sdk-kernel => github.com/Bolodya1997/sdk-kernel v0.0.0-20200925165057-50efe7f71e1d
 	k8s.io/api => k8s.io/api v0.18.6
 	k8s.io/apiextensions-apiserver => k8s.io/apiextensions-apiserver v0.18.6
 	k8s.io/apimachinery => k8s.io/apimachinery v0.18.7-rc.0
