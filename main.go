@@ -125,7 +125,7 @@ func main() {
 	}
 	log.Entry(ctx).Infof("SVID: %q", svid.ID)
 
-	// XConnect Network Service Endpoint
+	// SR-IOV Network Service Endpoint
 	endpoint := sriovchain.NewServer(
 		ctx,
 		config.Name,
