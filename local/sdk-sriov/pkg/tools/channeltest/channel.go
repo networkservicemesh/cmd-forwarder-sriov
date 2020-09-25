@@ -14,8 +14,8 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-// Package tools provides tools for testing
-package _chan
+// Package channeltest provides channel timed read, write for testing
+package channeltest
 
 import (
 	"testing"

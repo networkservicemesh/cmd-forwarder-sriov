@@ -24,15 +24,15 @@ import (
 	"testing"
 	"time"
 
-	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
+	"github.com/stretchr/testify/require"
 	"google.golang.org/grpc"
 
 	pluginapi "k8s.io/kubelet/pkg/apis/deviceplugin/v1beta1"
 	podresources "k8s.io/kubernetes/pkg/kubelet/apis/podresources/v1alpha1"
 
 	"github.com/networkservicemesh/cmd-forwarder-sriov/local/sdk-sriov/pkg/k8s/deviceplugin"
-	"github.com/networkservicemesh/cmd-forwarder-sriov/local/sdk-sriov/pkg/tools/chan"
+	"github.com/networkservicemesh/cmd-forwarder-sriov/local/sdk-sriov/pkg/tools/channeltest"
 )
 
 const (
@@ -75,15 +75,15 @@ func TestDevicePluginServer_Start(t *testing.T) {
 	m := initMocks(resetCh, &podresources.ListPodResourcesResponse{})
 
 	_, err := deviceplugin.StartServer(context.TODO(), config, m)
-	assert.Nil(t, err)
+	require.NoError(t, err)
 
 	m.mock.AssertCalled(t, "StartDeviceServer", mock.Anything, mock.Anything)
 	m.mock.AssertCalled(t, "RegisterDeviceServer", mock.Anything, mock.MatchedBy(func(request *pluginapi.RegisterRequest) bool {
 		return request.Endpoint == socket && request.ResourceName == resourceNamePrefix+resourceName
 	}))
 
-	_chan.WriteBoolChan(t, resetCh, true, time.Second)
-	assert.Eventually(t, func() bool {
+	channeltest.WriteBoolChan(t, resetCh, true, time.Second)
+	require.Eventually(t, func() bool {
 		var count int
 		for i := range m.mock.Calls {
 			if m.mock.Calls[i].Method == "RegisterDeviceServer" {
@@ -101,7 +101,7 @@ func TestDevicePluginServer_ListAndWatch(t *testing.T) {
 	m := initMocks(make(chan bool), resp)
 
 	dps, err := deviceplugin.StartServer(context.TODO(), config, m)
-	assert.Nil(t, err)
+	require.NoError(t, err)
 
 	respCh := make(chan *pluginapi.ListAndWatchResponse)
 	lws := &listAndWatchServer{
@@ -165,11 +165,11 @@ func listPodResourcesResponse(ids []string) *podresources.ListPodResourcesRespon
 }
 
 func validateResponse(t *testing.T, respCh chan *pluginapi.ListAndWatchResponse, expectedCount int) {
-	resp, ok := _chan.ReadListAndWatchResponseChan(t, respCh, 5*time.Minute)
-	assert.True(t, ok)
-	assert.Equal(t, expectedCount, len(resp.Devices))
+	resp, ok := channeltest.ReadListAndWatchResponseChan(t, respCh, 5*time.Minute)
+	require.True(t, ok)
+	require.Equal(t, expectedCount, len(resp.Devices))
 	for _, device := range resp.Devices {
-		assert.Equal(t, pluginapi.Healthy, device.Health)
+		require.Equal(t, pluginapi.Healthy, device.Health)
 	}
 }
 
@@ -185,7 +185,7 @@ func TestDevicePluginServer_Allocate(t *testing.T) {
 	m := initMocks(make(chan bool), listPodResourcesResponse(devices(0, containersCount)))
 
 	dps, err := deviceplugin.StartServer(context.TODO(), config, m)
-	assert.Nil(t, err)
+	require.NoError(t, err)
 
 	go func() {
 		_ = dps.ListAndWatch(&pluginapi.Empty{}, &listAndWatchServer{
@@ -200,7 +200,7 @@ func TestDevicePluginServer_Allocate(t *testing.T) {
 		})
 	}
 
-	assert.Eventually(t, func() bool {
+	require.Eventually(t, func() bool {
 		response, err := dps.Allocate(context.TODO(), req)
 		return err == nil && len(response.ContainerResponses) == containersCount
 	}, time.Second, 10*time.Millisecond)
