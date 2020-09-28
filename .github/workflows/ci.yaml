@@ -97,7 +97,7 @@ jobs:
         run: |
           cat go.mod |
           grep -v 'k8s.io/.* => k8s.io/.*' |
-          grep ^'=>' || exit 0
+          grep '=>' || exit 0
           exit 1
   captureRunEnv:
     name: Capture CI Run Env
