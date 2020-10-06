@@ -10,8 +10,8 @@ require (
 	github.com/golang/protobuf v1.4.2
 	github.com/google/uuid v1.1.1
 	github.com/kelseyhightower/envconfig v1.4.0
-	github.com/networkservicemesh/api v0.0.0-20200925211324-37a4e74e139d
-	github.com/networkservicemesh/sdk v0.0.0-20200929013147-b87d31d441a0
+	github.com/networkservicemesh/api v0.0.0-20201001183932-93ee44ca6fc4
+	github.com/networkservicemesh/sdk v0.0.0-20201005102403-f90572dba3a0
 	github.com/networkservicemesh/sdk-kernel v0.0.0-20200919062851-bc1bb7569c24
 	github.com/networkservicemesh/sdk-sriov v0.0.0-20200925074707-560e262ef600
 	github.com/pkg/errors v0.9.1
@@ -24,7 +24,8 @@ require (
 )
 
 replace (
-	github.com/networkservicemesh/sdk-kernel => github.com/Bolodya1997/sdk-kernel v0.0.0-20200925165057-50efe7f71e1d
+	github.com/networkservicemesh/sdk-kernel => github.com/Bolodya1997/sdk-kernel v0.0.0-20201005055054-792bf845aa5b
+	github.com/networkservicemesh/sdk-sriov => github.com/Bolodya1997/sdk-sriov v0.0.0-20201006055803-d00a0c3b317d
 	k8s.io/api => k8s.io/api v0.18.6
 	k8s.io/apiextensions-apiserver => k8s.io/apiextensions-apiserver v0.18.6
 	k8s.io/apimachinery => k8s.io/apimachinery v0.18.7-rc.0

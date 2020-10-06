@@ -20,7 +20,9 @@ package sriov
 import (
 	"context"
 	"net/url"
+	"sync"
 
+	sriovconfig "github.com/networkservicemesh/sdk-sriov/pkg/sriov/config"
 	"google.golang.org/grpc"
 
 	"github.com/networkservicemesh/api/pkg/api/networkservice"
@@ -33,11 +35,11 @@ import (
 	"github.com/networkservicemesh/sdk-kernel/pkg/kernel/networkservice/ipcontext"
 	"github.com/networkservicemesh/sdk-kernel/pkg/kernel/networkservice/netns"
 	"github.com/networkservicemesh/sdk-kernel/pkg/kernel/networkservice/rename"
+	"github.com/networkservicemesh/sdk-sriov/pkg/networkservice/common/mechanisms/vfio"
 	"github.com/networkservicemesh/sdk-sriov/pkg/networkservice/common/resourcepool"
 	"github.com/networkservicemesh/sdk-sriov/pkg/networkservice/common/vfconfig"
-	"github.com/networkservicemesh/sdk-sriov/pkg/networkservice/mechanisms/vfio"
 	"github.com/networkservicemesh/sdk-sriov/pkg/sriov"
-	pci "github.com/networkservicemesh/sdk-sriov/pkg/sriov/resourcepool"
+	"github.com/networkservicemesh/sdk-sriov/pkg/sriov/resource"
 	"github.com/networkservicemesh/sdk/pkg/networkservice/chains/client"
 	"github.com/networkservicemesh/sdk/pkg/networkservice/chains/endpoint"
 	"github.com/networkservicemesh/sdk/pkg/networkservice/common/clienturl"
@@ -68,7 +70,8 @@ func NewServer(
 	name string,
 	authzServer networkservice.NetworkServiceServer,
 	tokenGenerator token.GeneratorFunc,
-	pciConfig *pci.Config,
+	tokenPool resource.TokenPool,
+	sriovConfig *sriovconfig.Config,
 	functions map[sriov.PCIFunction][]sriov.PCIFunction,
 	binders map[uint][]sriov.DriverBinder,
 	vfioDir, cgroupBaseDir string,
@@ -94,7 +97,8 @@ func NewServer(
 	}
 
 	sriovChain := sriovChain(
-		pciConfig,
+		tokenPool,
+		sriovConfig,
 		functions,
 		binders,
 		vfioDir, cgroupBaseDir,
@@ -117,25 +121,27 @@ func NewServer(
 }
 
 func sriovChain(
-	pciConfig *pci.Config,
+	tokenPool resource.TokenPool,
+	sriovConfig *sriovconfig.Config,
 	functions map[sriov.PCIFunction][]sriov.PCIFunction,
 	binders map[uint][]sriov.DriverBinder,
 	vfioDir, cgroupBaseDir string,
 	connectChainFactory func(string) networkservice.NetworkServiceServer,
 ) networkservice.NetworkServiceServer {
+	resourceLock := &sync.Mutex{}
 	return chain.NewNetworkServiceServer(
 		recvfd.NewServer(),
 		vfconfig.NewServer(),
-		resourcepool.NewInitServer(functions, pciConfig),
+		resourcepool.NewInitServer(tokenPool, sriovConfig),
 		resetmechanism.NewServer(
 			mechanisms.NewServer(map[string]networkservice.NetworkServiceServer{
 				kernel.MECHANISM: chain.NewNetworkServiceServer(
-					resourcepool.NewServer(sriov.KernelDriver, functions, binders),
+					resourcepool.NewServer(sriov.KernelDriver, resourceLock, functions, binders),
 					rename.NewServer(),
 					inject.NewServer(),
 				),
 				vfiomech.MECHANISM: chain.NewNetworkServiceServer(
-					resourcepool.NewServer(sriov.VfioPCIDriver, functions, binders),
+					resourcepool.NewServer(sriov.VFIOPCIDriver, resourceLock, functions, binders),
 					vfio.NewServer(vfioDir, cgroupBaseDir),
 				),
 			}),

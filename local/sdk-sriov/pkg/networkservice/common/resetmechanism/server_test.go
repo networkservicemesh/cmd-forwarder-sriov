@@ -21,11 +21,12 @@ import (
 	"testing"
 
 	"github.com/golang/protobuf/ptypes/empty"
+	"github.com/stretchr/testify/mock"
+	"github.com/stretchr/testify/require"
+
 	"github.com/networkservicemesh/api/pkg/api/networkservice"
 	"github.com/networkservicemesh/sdk/pkg/networkservice/core/chain"
 	"github.com/networkservicemesh/sdk/pkg/networkservice/core/next"
-	"github.com/stretchr/testify/assert"
-	"github.com/stretchr/testify/mock"
 
 	"github.com/networkservicemesh/cmd-forwarder-sriov/local/sdk-sriov/pkg/networkservice/common/resetmechanism"
 )
@@ -63,10 +64,10 @@ func TestResetMechanismServer_Request(t *testing.T) {
 	}
 
 	conn, err := server.Request(context.TODO(), request)
-	assert.Nil(t, err)
-	assert.Equal(t, mech1, conn.Mechanism.Type)
+	require.NoError(t, err)
+	require.Equal(t, mech1, conn.Mechanism.Type)
 
-	assert.True(t, mechs[mech1])
+	require.True(t, mechs[mech1])
 
 	m.AssertNumberOfCalls(t, "Request", 1)
 	m.AssertNumberOfCalls(t, "Close", 0)
@@ -77,11 +78,11 @@ func TestResetMechanismServer_Request(t *testing.T) {
 	request.MechanismPreferences[0].Type = mech2
 
 	conn, err = server.Request(context.TODO(), request)
-	assert.Nil(t, err)
-	assert.Equal(t, mech2, conn.Mechanism.Type)
+	require.NoError(t, err)
+	require.Equal(t, mech2, conn.Mechanism.Type)
 
-	assert.False(t, mechs[mech1])
-	assert.True(t, mechs[mech2])
+	require.False(t, mechs[mech1])
+	require.True(t, mechs[mech2])
 
 	m.AssertNumberOfCalls(t, "Request", 2)
 	m.AssertNumberOfCalls(t, "Close", 0)
@@ -89,10 +90,10 @@ func TestResetMechanismServer_Request(t *testing.T) {
 	// 3. Close
 
 	_, err = server.Close(context.TODO(), conn)
-	assert.Nil(t, err)
+	require.NoError(t, err)
 
-	assert.False(t, mechs[mech1])
-	assert.False(t, mechs[mech2])
+	require.False(t, mechs[mech1])
+	require.False(t, mechs[mech2])
 
 	m.AssertNumberOfCalls(t, "Request", 2)
 	m.AssertNumberOfCalls(t, "Close", 1)

@@ -19,8 +19,8 @@ package deviceplugin
 
 import (
 	"context"
-	"errors"
 	"fmt"
+	"strings"
 	"sync"
 	"time"
 
@@ -30,14 +30,16 @@ import (
 )
 
 const (
-	resourceNamePrefix = "networkservicemesh.io/"
+	//nolint:gosec
+	tokensEnvPrefix = "NSM_SRIOV_TOKENS_"
 )
 
-// ServerConfig is a struct for configuring device plugin server
-type ServerConfig struct {
-	ResourceName        string
-	ResourceCount       int
-	ResourcePollTimeout time.Duration
+// TokenPool is a token.Pool interface
+type TokenPool interface {
+	AddListener(listener func())
+	Tokens() map[string]map[string]bool
+	Allocate(id string) error
+	Free(id string) error
 }
 
 // K8sManager is a bridge interface to the k8s API
@@ -50,58 +52,69 @@ type K8sManager interface {
 
 type devicePluginServer struct {
 	ctx                  context.Context
-	resourceName         string
-	resourceCount        int
+	name                 string
+	tokenPool            TokenPool
 	resourcePollTimeout  time.Duration
-	devices              map[string]bool
-	updateDevicesCh      chan bool
+	updateCh             chan struct{}
 	lock                 sync.Mutex
 	resourceListerClient podresources.PodResourcesListerClient
 }
 
-// StartServer creates a new SR-IOV forwarder device plugin server and starts it
-func StartServer(ctx context.Context, config *ServerConfig, manager K8sManager) (pluginapi.DevicePluginServer, error) {
-	logEntry := log.Entry(ctx).WithField("devicePluginServer", "StartServer")
-
-	s := &devicePluginServer{
-		ctx:                 ctx,
-		resourceName:        resourceNamePrefix + config.ResourceName,
-		resourceCount:       config.ResourceCount,
-		resourcePollTimeout: config.ResourcePollTimeout,
-		devices:             map[string]bool{},
-		updateDevicesCh:     make(chan bool, 1),
-	}
+// StartServers creates new SR-IOV forwarder device plugin servers and starts them
+func StartServers(
+	ctx context.Context,
+	tokenPool TokenPool,
+	resourcePollTimeout time.Duration,
+	manager K8sManager,
+) error {
+	logEntry := log.Entry(ctx).WithField("devicePluginServer", "StartServers")
 
 	logEntry.Info("get resource lister client")
 	resourceListerClient, err := manager.GetPodResourcesListerClient(ctx)
 	if err != nil {
 		logEntry.Error("failed to get resource lister client")
-		return nil, err
-	}
-	s.resourceListerClient = resourceListerClient
-
-	logEntry.Info("starting server")
-	socket, err := manager.StartDeviceServer(s.ctx, s)
-	if err != nil {
-		logEntry.Error("error starting server")
-		return nil, err
+		return err
 	}
 
-	logEntry.Info("registering server")
-	if err := manager.RegisterDeviceServer(s.ctx, &pluginapi.RegisterRequest{
-		Version:      pluginapi.Version,
-		Endpoint:     socket,
-		ResourceName: s.resourceName,
-	}); err != nil {
-		logEntry.Error("error registering server")
-		return nil, err
-	}
+	for name := range tokenPool.Tokens() {
+		s := &devicePluginServer{
+			ctx:                  ctx,
+			name:                 name,
+			tokenPool:            tokenPool,
+			resourcePollTimeout:  resourcePollTimeout,
+			updateCh:             make(chan struct{}, 1),
+			resourceListerClient: resourceListerClient,
+		}
 
-	if err := s.monitorKubeletRestart(manager, socket); err != nil {
-		logEntry.Warnf("error monitoring kubelet restart: %+v", err)
-	}
+		tokenPool.AddListener(func() {
+			select {
+			case s.updateCh <- struct{}{}:
+			default:
+			}
+		})
 
-	return s, nil
+		logEntry.Infof("starting server: %v", name)
+		socket, err := manager.StartDeviceServer(s.ctx, s)
+		if err != nil {
+			logEntry.Errorf("error starting server: %v", name)
+			return err
+		}
+
+		logEntry.Infof("registering server: %s", name)
+		if err := manager.RegisterDeviceServer(s.ctx, &pluginapi.RegisterRequest{
+			Version:      pluginapi.Version,
+			Endpoint:     socket,
+			ResourceName: name,
+		}); err != nil {
+			logEntry.Errorf("error registering server: %s", name)
+			return err
+		}
+
+		if err := s.monitorKubeletRestart(manager, socket); err != nil {
+			logEntry.Warnf("error monitoring kubelet restart: %s %+v", name, err)
+		}
+	}
+	return nil
 }
 
 func (s *devicePluginServer) monitorKubeletRestart(manager K8sManager, socket string) error {
@@ -113,8 +126,8 @@ func (s *devicePluginServer) monitorKubeletRestart(manager K8sManager, socket st
 	}
 
 	go func() {
-		logEntry.Info("start monitoring kubelet restart")
-		defer logEntry.Info("stop monitoring kubelet restart")
+		logEntry.Infof("start monitoring kubelet restart: %s", s.name)
+		defer logEntry.Infof("stop monitoring kubelet restart: %s", s.name)
 		for {
 			select {
 			case <-s.ctx.Done():
@@ -123,13 +136,13 @@ func (s *devicePluginServer) monitorKubeletRestart(manager K8sManager, socket st
 				if !ok {
 					return
 				}
-				logEntry.Info("re registering server")
+				logEntry.Infof("re registering server: %s", s.name)
 				if err = manager.RegisterDeviceServer(s.ctx, &pluginapi.RegisterRequest{
 					Version:      pluginapi.Version,
 					Endpoint:     socket,
-					ResourceName: s.resourceName,
+					ResourceName: s.name,
 				}); err != nil {
-					logEntry.Errorf("error re registering server: %+v", err)
+					logEntry.Error("error re registering server: %s %+v", s.name, err)
 					return
 				}
 			}
@@ -165,19 +178,19 @@ func (s *devicePluginServer) ListAndWatch(_ *pluginapi.Empty, server pluginapi.D
 			logEntry.Info("server stopped")
 			return s.ctx.Err()
 		case <-time.After(s.resourcePollTimeout):
-		case <-s.updateDevicesCh:
+		case <-s.updateCh:
 		}
 	}
 }
 
-func (s *devicePluginServer) respToDeviceIds(resp *podresources.ListPodResourcesResponse) map[string]bool {
-	deviceIds := map[string]bool{}
+func (s *devicePluginServer) respToDeviceIds(resp *podresources.ListPodResourcesResponse) map[string]struct{} {
+	deviceIds := map[string]struct{}{}
 	for _, pod := range resp.PodResources {
 		for _, container := range pod.Containers {
 			for _, device := range container.Devices {
-				if device.ResourceName == s.resourceName {
+				if device.ResourceName == s.name {
 					for _, id := range device.DeviceIds {
-						deviceIds[id] = true
+						deviceIds[id] = struct{}{}
 					}
 				}
 			}
@@ -186,42 +199,29 @@ func (s *devicePluginServer) respToDeviceIds(resp *podresources.ListPodResources
 	return deviceIds
 }
 
-func (s *devicePluginServer) updateDevices(idsInUse map[string]bool) {
+func (s *devicePluginServer) updateDevices(idsInUse map[string]struct{}) {
 	s.lock.Lock()
 	defer s.lock.Unlock()
 
-	var freeCount int
-	for id, free := range s.devices {
-		switch {
-		case idsInUse[id]:
-			s.devices[id] = false
-		case !free:
-			s.devices[id] = true
-		default:
-			if freeCount < s.resourceCount {
-				freeCount++
-			} else {
-				delete(s.devices, id)
-			}
-		}
-	}
-
-	for i := 0; freeCount < s.resourceCount; i++ {
-		id := fmt.Sprintf("%s/%v", s.resourceName, i)
-		if _, ok := s.devices[id]; !ok {
-			s.devices[id] = true
-			freeCount++
+	for id, healthy := range s.tokenPool.Tokens()[s.name] {
+		if _, allocated := idsInUse[id]; !allocated && healthy {
+			_ = s.tokenPool.Free(id)
 		}
 	}
 }
 
 func (s *devicePluginServer) listAndWatchResponse() *pluginapi.ListAndWatchResponse {
 	var devices []*pluginapi.Device
-	for id := range s.devices {
-		devices = append(devices, &pluginapi.Device{
-			ID:     id,
-			Health: pluginapi.Healthy,
-		})
+	for id, healthy := range s.tokenPool.Tokens()[s.name] {
+		device := &pluginapi.Device{
+			ID: id,
+		}
+		if healthy {
+			device.Health = pluginapi.Healthy
+		} else {
+			device.Health = pluginapi.Unhealthy
+		}
+		devices = append(devices, device)
 	}
 	return &pluginapi.ListAndWatchResponse{
 		Devices: devices,
@@ -229,45 +229,38 @@ func (s *devicePluginServer) listAndWatchResponse() *pluginapi.ListAndWatchRespo
 }
 
 func (s *devicePluginServer) Allocate(_ context.Context, request *pluginapi.AllocateRequest) (*pluginapi.AllocateResponse, error) {
+	tokensEnv := fmt.Sprintf("%s%s", tokensEnvPrefix, s.name)
+
 	response := &pluginapi.AllocateResponse{
 		ContainerResponses: make([]*pluginapi.ContainerAllocateResponse, len(request.ContainerRequests)),
 	}
 
-	devices := map[string]bool{}
+	var ids []string
 	for i, container := range request.ContainerRequests {
-		for _, id := range container.DevicesIDs {
-			devices[id] = false
+		ids = append(ids, container.DevicesIDs...)
+		response.ContainerResponses[i] = &pluginapi.ContainerAllocateResponse{
+			Envs: map[string]string{
+				tokensEnv: strings.Join(container.DevicesIDs, ","),
+			},
 		}
-
-		response.ContainerResponses[i] = &pluginapi.ContainerAllocateResponse{}
 	}
 
-	if err := s.useDevices(devices); err != nil {
+	if err := s.useDevices(ids); err != nil {
 		return nil, err
-	}
-
-	select {
-	case s.updateDevicesCh <- true:
-	default:
 	}
 
 	return response, nil
 }
 
-func (s *devicePluginServer) useDevices(devices map[string]bool) error {
+func (s *devicePluginServer) useDevices(ids []string) error {
 	s.lock.Lock()
 	defer s.lock.Unlock()
 
-	for id := range devices {
-		if _, ok := s.devices[id]; !ok {
-			return errors.New("trying to use non existing device")
+	for i := range ids {
+		if err := s.tokenPool.Allocate(ids[i]); err != nil {
+			return err
 		}
 	}
-
-	for id, device := range devices {
-		s.devices[id] = device
-	}
-
 	return nil
 }
 

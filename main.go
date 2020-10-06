@@ -25,6 +25,8 @@ import (
 	nested "github.com/antonfisher/nested-logrus-formatter"
 	"github.com/edwarnicke/grpcfd"
 	"github.com/kelseyhightower/envconfig"
+	sriovconfig "github.com/networkservicemesh/sdk-sriov/pkg/sriov/config"
+	"github.com/networkservicemesh/sdk-sriov/pkg/sriov/token"
 	"github.com/sirupsen/logrus"
 	"github.com/spiffe/go-spiffe/v2/spiffetls/tlsconfig"
 	"github.com/spiffe/go-spiffe/v2/workloadapi"
@@ -33,7 +35,6 @@ import (
 
 	"github.com/networkservicemesh/sdk-sriov/pkg/sriov"
 	"github.com/networkservicemesh/sdk-sriov/pkg/sriov/pcifunction"
-	pci "github.com/networkservicemesh/sdk-sriov/pkg/sriov/resourcepool"
 	"github.com/networkservicemesh/sdk/pkg/networkservice/common/authorize"
 	"github.com/networkservicemesh/sdk/pkg/tools/debug"
 	"github.com/networkservicemesh/sdk/pkg/tools/grpcutils"
@@ -52,11 +53,10 @@ type Config struct {
 	ListenOn            url.URL       `default:"unix:///listen.on.socket" desc:"url to listen on" split_words:"true"`
 	ConnectTo           url.URL       `default:"unix:///connect.to.socket" desc:"url to connect to" split_words:"true"`
 	MaxTokenLifetime    time.Duration `default:"24h" desc:"maximum lifetime of tokens" split_words:"true"`
-	ResourceCount       int           `default:"10" desc:"device plugin resource count" split_words:"true"`
 	ResourcePollTimeout time.Duration `default:"30s" desc:"device plugin polling timeout" split_words:"true"`
 	DevicePluginPath    string        `default:"/var/lib/kubelet/device-plugins/" desc:"path to the device plugin directory" split_words:"true"`
 	PodResourcesPath    string        `default:"/var/lib/kubelet/pod-resources/" desc:"path to the pod resources directory" split_words:"true"`
-	PCIConfigFile       string        `default:"/networkservicemesh/pci.config" desc:"PCI resources config path" split_words:"true"`
+	SRIOVConfigFile     string        `default:"/networkservicemesh/pci.config" desc:"PCI resources config path" split_words:"true"`
 	PCIDevicesPath      string        `default:"/sys/bus/pci/devices" desc:"path to the PCI devices directory" split_words:"true"`
 	PCIDriversPath      string        `default:"/sys/bus/pci/drivers" desc:"path to the PCI drivers directory" split_words:"true"`
 	CgroupPath          string        `default:"/host/sys/fs/cgroup/devices" desc:"path to the host cgroup directory" split_words:"true"`
@@ -81,28 +81,18 @@ func main() {
 	starttime := time.Now()
 
 	// Get config from environment
-	config := &Config{}
-	if err := envconfig.Usage("nsm", config); err != nil {
+	cfg := &Config{}
+	if err := envconfig.Usage("nsm", cfg); err != nil {
 		logrus.Fatal(err)
 	}
-	if err := envconfig.Process("nsm", config); err != nil {
+	if err := envconfig.Process("nsm", cfg); err != nil {
 		logrus.Fatalf("error processing config from env: %+v", err)
 	}
 
-	log.Entry(ctx).Infof("Config: %#v", config)
-
-	// Start device plugin server
-	manager := k8s.NewManager(config.DevicePluginPath, config.PodResourcesPath)
-	if _, err := deviceplugin.StartServer(ctx, &deviceplugin.ServerConfig{
-		ResourceName:        config.Name,
-		ResourceCount:       config.ResourceCount,
-		ResourcePollTimeout: config.ResourcePollTimeout,
-	}, manager); err != nil {
-		log.Entry(ctx).Fatalf("failed to start a device plugin server: %+v", err)
-	}
+	log.Entry(ctx).Infof("Config: %#v", cfg)
 
 	// Init PCI physical functions
-	pciConfig, functions, binders, err := initPCIFunctions(ctx, config.PCIConfigFile, config.PCIDevicesPath, config.PCIDriversPath)
+	sriovConfig, functions, binders, err := initPCIFunctions(ctx, cfg.SRIOVConfigFile, cfg.PCIDevicesPath, cfg.PCIDriversPath)
 	if err != nil {
 		log.Entry(ctx).Fatalf("failed to configure PCI physical functions: %+v", err)
 	}
@@ -113,6 +103,15 @@ func main() {
 			}
 		}
 	}()
+
+	// Create SR-IOV resource token pool
+	tokenPool := token.NewPool(sriovConfig)
+
+	// Start device plugin server
+	manager := k8s.NewManager(cfg.DevicePluginPath, cfg.PodResourcesPath)
+	if err = deviceplugin.StartServers(ctx, tokenPool, cfg.ResourcePollTimeout, manager); err != nil {
+		log.Entry(ctx).Fatalf("failed to start a device plugin server: %+v", err)
+	}
 
 	// Get a X509Source
 	source, err := workloadapi.NewX509Source(ctx)
@@ -128,14 +127,15 @@ func main() {
 	// SR-IOV Network Service Endpoint
 	endpoint := sriovchain.NewServer(
 		ctx,
-		config.Name,
+		cfg.Name,
 		authorize.NewServer(),
-		spiffejwt.TokenGeneratorFunc(source, config.MaxTokenLifetime),
-		pciConfig,
+		spiffejwt.TokenGeneratorFunc(source, cfg.MaxTokenLifetime),
+		tokenPool,
+		sriovConfig,
 		functions,
 		binders,
-		config.VfioPath, config.CgroupPath,
-		&config.ConnectTo,
+		cfg.VfioPath, cfg.CgroupPath,
+		&cfg.ConnectTo,
 		grpc.WithTransportCredentials(
 			grpcfd.TransportCredentials(
 				credentials.NewTLS(tlsconfig.MTLSClientConfig(source, source, tlsconfig.AuthorizeAny())),
@@ -148,7 +148,7 @@ func main() {
 	// TODO - add ServerOptions for Tracing
 	server := grpc.NewServer(grpc.Creds(credentials.NewTLS(tlsconfig.MTLSServerConfig(source, source, tlsconfig.AuthorizeAny()))))
 	endpoint.Register(server)
-	srvErrCh := grpcutils.ListenAndServe(ctx, &config.ListenOn, server)
+	srvErrCh := grpcutils.ListenAndServe(ctx, &cfg.ListenOn, server)
 	exitOnErr(ctx, cancel, srvErrCh)
 
 	log.Entry(ctx).Infof("Startup completed in %v", time.Since(starttime))
@@ -156,20 +156,22 @@ func main() {
 	<-ctx.Done()
 }
 
-func initPCIFunctions(ctx context.Context, pciConfigFile, pciDevicesPath, pciDriversPath string) (
-	pciConfig *pci.Config,
+func initPCIFunctions(ctx context.Context, sriovConfigFile, pciDevicesPath, pciDriversPath string) (
+	sriovConfig *sriovconfig.Config,
 	functions map[sriov.PCIFunction][]sriov.PCIFunction,
 	binders map[uint][]sriov.DriverBinder,
 	err error,
 ) {
-	pciConfig, err = pci.ReadConfig(ctx, pciConfigFile)
+	sriovConfig, err = sriovconfig.ReadConfig(ctx, sriovConfigFile)
 	if err != nil {
 		log.Entry(ctx).Fatalf("failed to get PCI resources config: %+v", err)
 	}
 
 	functions = map[sriov.PCIFunction][]sriov.PCIFunction{}
 	binders = map[uint][]sriov.DriverBinder{}
-	for pfPciAddr := range pciConfig.PhysicalFunctions {
+	for pfPciAddr, pff := range sriovConfig.PhysicalFunctions {
+		pff.VirtualFunctions = map[string]uint{}
+
 		pf, err := pcifunction.NewPhysicalFunction(pfPciAddr, pciDevicesPath, pciDriversPath)
 		if err != nil {
 			return nil, nil, nil, err
@@ -187,22 +189,25 @@ func initPCIFunctions(ctx context.Context, pciConfigFile, pciDevicesPath, pciDri
 			return nil, nil, nil, err
 		}
 
-		igid, err := pf.GetIommuGroupID()
+		iommuGroup, err := pf.GetIOMMUGroup()
 		if err != nil {
 			return nil, nil, nil, err
 		}
-		binders[igid] = append(binders[igid], pf)
+		binders[iommuGroup] = append(binders[iommuGroup], pf)
 
 		for _, vf := range vfs {
 			functions[pf] = append(functions[pf], vf)
-			igid, err := vf.GetIommuGroupID()
+
+			iommuGroup, err := vf.GetIOMMUGroup()
 			if err != nil {
 				return nil, nil, nil, err
 			}
-			binders[igid] = append(binders[igid], vf)
+			binders[iommuGroup] = append(binders[iommuGroup], vf)
+
+			pff.VirtualFunctions[vf.GetPCIAddress()] = iommuGroup
 		}
 	}
-	return pciConfig, functions, binders, nil
+	return sriovConfig, functions, binders, nil
 }
 
 func exitOnErr(ctx context.Context, cancel context.CancelFunc, errCh <-chan error) {
