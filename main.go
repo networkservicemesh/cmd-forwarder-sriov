@@ -60,7 +60,7 @@ type Config struct {
 	PCIDevicesPath      string        `default:"/sys/bus/pci/devices" desc:"path to the PCI devices directory" split_words:"true"`
 	PCIDriversPath      string        `default:"/sys/bus/pci/drivers" desc:"path to the PCI drivers directory" split_words:"true"`
 	CgroupPath          string        `default:"/host/sys/fs/cgroup/devices" desc:"path to the host cgroup directory" split_words:"true"`
-	VfioPath            string        `default:"/host/dev/vfio" desc:"path to the host VFIO directory" split_words:"true"`
+	VFIOPath            string        `default:"/host/dev/vfio" desc:"path to the host VFIO directory" split_words:"true"`
 }
 
 func main() {
@@ -134,7 +134,7 @@ func main() {
 		sriovConfig,
 		functions,
 		binders,
-		cfg.VfioPath, cfg.CgroupPath,
+		cfg.VFIOPath, cfg.CgroupPath,
 		&cfg.ConnectTo,
 		grpc.WithTransportCredentials(
 			grpcfd.TransportCredentials(
@@ -169,10 +169,10 @@ func initPCIFunctions(ctx context.Context, sriovConfigFile, pciDevicesPath, pciD
 
 	functions = map[sriov.PCIFunction][]sriov.PCIFunction{}
 	binders = map[uint][]sriov.DriverBinder{}
-	for pfPciAddr, pff := range sriovConfig.PhysicalFunctions {
+	for pfPCIAddr, pff := range sriovConfig.PhysicalFunctions {
 		pff.VirtualFunctions = map[string]uint{}
 
-		pf, err := pcifunction.NewPhysicalFunction(pfPciAddr, pciDevicesPath, pciDriversPath)
+		pf, err := pcifunction.NewPhysicalFunction(pfPCIAddr, pciDevicesPath, pciDriversPath)
 		if err != nil {
 			return nil, nil, nil, err
 		}
