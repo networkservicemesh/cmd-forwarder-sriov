@@ -51,12 +51,13 @@ type K8sManager interface {
 }
 
 type devicePluginServer struct {
+	lock                 sync.Mutex
 	ctx                  context.Context
 	name                 string
 	tokenPool            TokenPool
 	resourcePollTimeout  time.Duration
 	updateCh             chan struct{}
-	lock                 sync.Mutex
+	allocatedTokens      map[string]bool
 	resourceListerClient podresources.PodResourcesListerClient
 }
 
@@ -86,12 +87,7 @@ func StartServers(
 			resourceListerClient: resourceListerClient,
 		}
 
-		tokenPool.AddListener(func() {
-			select {
-			case s.updateCh <- struct{}{}:
-			default:
-			}
-		})
+		tokenPool.AddListener(s.update)
 
 		logEntry.Infof("starting server: %v", name)
 		socket, err := manager.StartDeviceServer(s.ctx, s)
@@ -115,6 +111,13 @@ func StartServers(
 		}
 	}
 	return nil
+}
+
+func (s *devicePluginServer) update() {
+	select {
+	case s.updateCh <- struct{}{}:
+	default:
+	}
 }
 
 func (s *devicePluginServer) monitorKubeletRestart(manager K8sManager, socket string) error {
@@ -166,7 +169,7 @@ func (s *devicePluginServer) ListAndWatch(_ *pluginapi.Empty, server pluginapi.D
 			return err
 		}
 
-		s.updateDevices(s.respToDeviceIds(resp))
+		s.updateDevices(s.respToDeviceIDs(resp))
 
 		if err := server.Send(s.listAndWatchResponse()); err != nil {
 			logEntry.Errorf("server unavailable: %+v", err)
@@ -183,29 +186,35 @@ func (s *devicePluginServer) ListAndWatch(_ *pluginapi.Empty, server pluginapi.D
 	}
 }
 
-func (s *devicePluginServer) respToDeviceIds(resp *podresources.ListPodResourcesResponse) map[string]struct{} {
-	deviceIds := map[string]struct{}{}
+func (s *devicePluginServer) respToDeviceIDs(resp *podresources.ListPodResourcesResponse) map[string]struct{} {
+	deviceIDs := map[string]struct{}{}
 	for _, pod := range resp.PodResources {
 		for _, container := range pod.Containers {
 			for _, device := range container.Devices {
 				if device.ResourceName == s.name {
 					for _, id := range device.DeviceIds {
-						deviceIds[id] = struct{}{}
+						deviceIDs[id] = struct{}{}
 					}
 				}
 			}
 		}
 	}
-	return deviceIds
+	return deviceIDs
 }
 
-func (s *devicePluginServer) updateDevices(idsInUse map[string]struct{}) {
+func (s *devicePluginServer) updateDevices(allocatedIDs map[string]struct{}) {
 	s.lock.Lock()
 	defer s.lock.Unlock()
 
-	for id, healthy := range s.tokenPool.Tokens()[s.name] {
-		if _, allocated := idsInUse[id]; !allocated && healthy {
+	for id, allocated := range s.allocatedTokens {
+		switch _, ok := allocatedIDs[id]; {
+		case ok:
+			s.allocatedTokens[id] = true
+		case allocated:
+			s.allocatedTokens[id] = false
+		default:
 			_ = s.tokenPool.Free(id)
+			delete(s.allocatedTokens, id)
 		}
 	}
 }
@@ -231,37 +240,46 @@ func (s *devicePluginServer) listAndWatchResponse() *pluginapi.ListAndWatchRespo
 func (s *devicePluginServer) Allocate(_ context.Context, request *pluginapi.AllocateRequest) (*pluginapi.AllocateResponse, error) {
 	tokensEnv := fmt.Sprintf("%s%s", tokensEnvPrefix, s.name)
 
-	response := &pluginapi.AllocateResponse{
+	resp := &pluginapi.AllocateResponse{
 		ContainerResponses: make([]*pluginapi.ContainerAllocateResponse, len(request.ContainerRequests)),
 	}
 
 	var ids []string
 	for i, container := range request.ContainerRequests {
 		ids = append(ids, container.DevicesIDs...)
-		response.ContainerResponses[i] = &pluginapi.ContainerAllocateResponse{
+		resp.ContainerResponses[i] = &pluginapi.ContainerAllocateResponse{
 			Envs: map[string]string{
 				tokensEnv: strings.Join(container.DevicesIDs, ","),
 			},
 		}
 	}
 
-	if err := s.useDevices(ids); err != nil {
-		return nil, err
-	}
+	err := s.useDevices(ids)
+	s.update()
 
-	return response, nil
+	return resp, err
 }
 
-func (s *devicePluginServer) useDevices(ids []string) error {
+func (s *devicePluginServer) useDevices(ids []string) (err error) {
 	s.lock.Lock()
 	defer s.lock.Unlock()
 
 	for i := range ids {
-		if err := s.tokenPool.Allocate(ids[i]); err != nil {
-			return err
+		err = s.tokenPool.Allocate(ids[i])
+		if err != nil {
+			break
+		}
+		s.allocatedTokens[ids[i]] = true
+	}
+
+	if err != nil {
+		for i := range ids {
+			_ = s.tokenPool.Free(ids[i])
+			delete(s.allocatedTokens, ids[i])
 		}
 	}
-	return nil
+
+	return err
 }
 
 func (s *devicePluginServer) PreStartContainer(_ context.Context, _ *pluginapi.PreStartContainerRequest) (*pluginapi.PreStartContainerResponse, error) {
