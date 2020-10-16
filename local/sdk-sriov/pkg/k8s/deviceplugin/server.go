@@ -19,19 +19,13 @@ package deviceplugin
 
 import (
 	"context"
-	"fmt"
-	"strings"
 	"sync"
 	"time"
 
+	"github.com/networkservicemesh/sdk-sriov/pkg/tools/tokens"
 	"github.com/networkservicemesh/sdk/pkg/tools/log"
 	pluginapi "k8s.io/kubelet/pkg/apis/deviceplugin/v1beta1"
 	podresources "k8s.io/kubernetes/pkg/kubelet/apis/podresources/v1alpha1"
-)
-
-const (
-	//nolint:gosec
-	tokensEnvPrefix = "NSM_SRIOV_TOKENS_"
 )
 
 // TokenPool is a token.Pool interface
@@ -84,6 +78,7 @@ func StartServers(
 			tokenPool:            tokenPool,
 			resourcePollTimeout:  resourcePollTimeout,
 			updateCh:             make(chan struct{}, 1),
+			allocatedTokens:      map[string]bool{},
 			resourceListerClient: resourceListerClient,
 		}
 
@@ -145,7 +140,7 @@ func (s *devicePluginServer) monitorKubeletRestart(manager K8sManager, socket st
 					Endpoint:     socket,
 					ResourceName: s.name,
 				}); err != nil {
-					logEntry.Error("error re registering server: %s %+v", s.name, err)
+					logEntry.Errorf("error re registering server: %s %+v", s.name, err)
 					return
 				}
 			}
@@ -238,8 +233,6 @@ func (s *devicePluginServer) listAndWatchResponse() *pluginapi.ListAndWatchRespo
 }
 
 func (s *devicePluginServer) Allocate(_ context.Context, request *pluginapi.AllocateRequest) (*pluginapi.AllocateResponse, error) {
-	tokensEnv := fmt.Sprintf("%s%s", tokensEnvPrefix, s.name)
-
 	resp := &pluginapi.AllocateResponse{
 		ContainerResponses: make([]*pluginapi.ContainerAllocateResponse, len(request.ContainerRequests)),
 	}
@@ -247,9 +240,11 @@ func (s *devicePluginServer) Allocate(_ context.Context, request *pluginapi.Allo
 	var ids []string
 	for i, container := range request.ContainerRequests {
 		ids = append(ids, container.DevicesIDs...)
+
+		name, value := tokens.ToEnv(s.name, container.DevicesIDs)
 		resp.ContainerResponses[i] = &pluginapi.ContainerAllocateResponse{
 			Envs: map[string]string{
-				tokensEnv: strings.Join(container.DevicesIDs, ","),
+				name: value,
 			},
 		}
 	}
