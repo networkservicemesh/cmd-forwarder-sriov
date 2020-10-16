@@ -21,7 +21,6 @@ import (
 	"context"
 
 	"github.com/golang/protobuf/ptypes/empty"
-	"github.com/networkservicemesh/sdk/pkg/networkservice/core/chainbreak"
 
 	"github.com/networkservicemesh/sdk/pkg/networkservice/core/next"
 
@@ -54,7 +53,9 @@ func (s *resetMechanismServer) Request(ctx context.Context, request *networkserv
 		// requested mechanism has been changed, we need to reset the connection for the wrapped server
 		conn := request.GetConnection().Clone()
 		conn.Mechanism = storedMech
-		if _, err := chainbreak.NewNetworkServiceServer(s.wrappedServer).Close(ctx, conn); err != nil {
+
+		closeServer := next.NewNetworkServiceServer(s.wrappedServer, &tailServer{})
+		if _, err := closeServer.Close(ctx, conn); err != nil {
 			return nil, err
 		}
 	}

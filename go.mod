@@ -24,7 +24,7 @@ require (
 )
 
 replace (
-	github.com/networkservicemesh/sdk => github.com/Bolodya1997/sdk v0.0.0-20201015084059-cb691a71cb9b
+	github.com/networkservicemesh/sdk => github.com/Bolodya1997/sdk v0.0.0-20201016074455-d60e27b21402
 	github.com/networkservicemesh/sdk-sriov => github.com/Bolodya1997/sdk-sriov v0.0.0-20201015113325-3a18674a8e09
 	k8s.io/api => k8s.io/api v0.18.6
 	k8s.io/apiextensions-apiserver => k8s.io/apiextensions-apiserver v0.18.6
