@@ -36,74 +36,138 @@ const (
 	mech2 = "mech-2"
 )
 
-func TestResetMechanismServer_Request(t *testing.T) {
-	mechs := map[string]bool{}
-
-	m := &mock.Mock{}
-	m.On("Request", mock.Anything, mock.Anything).
-		Return(nil, nil)
-	m.On("Close", mock.Anything, mock.Anything).
-		Return(nil, nil)
-
-	server := chain.NewNetworkServiceServer(
-		resetmechanism.NewServer(&mechChainElement{mechs}),
-		&mockChainElement{m},
-	)
-
-	// 1. Request with mech1 mechanism
-
-	request := &networkservice.NetworkServiceRequest{
+func testRequest(mechType string) *networkservice.NetworkServiceRequest {
+	return &networkservice.NetworkServiceRequest{
 		Connection: &networkservice.Connection{
 			Id: "test-ID",
 		},
 		MechanismPreferences: []*networkservice.Mechanism{
 			{
-				Type: mech1,
+				Type: mechType,
 			},
 		},
 	}
+}
+
+func TestResetMechanismServer_Request_Update(t *testing.T) {
+	mechElement := newMechChainElement()
+	mockElement := newMockChainElement()
+
+	server := chain.NewNetworkServiceServer(
+		resetmechanism.NewServer(mechElement),
+		mockElement,
+	)
+
+	// 1. Request with mech1 mechanism
+
+	request := testRequest(mech1)
 
 	conn, err := server.Request(context.TODO(), request)
 	require.NoError(t, err)
 	require.Equal(t, mech1, conn.Mechanism.Type)
 
-	require.True(t, mechs[mech1])
+	require.True(t, mechElement.mechs[mech1])
 
-	m.AssertNumberOfCalls(t, "Request", 1)
-	m.AssertNumberOfCalls(t, "Close", 0)
+	mechElement.mock.AssertNumberOfCalls(t, "Request", 1)
+	mechElement.mock.AssertNumberOfCalls(t, "Close", 0)
+	mockElement.mock.AssertNumberOfCalls(t, "Request", 1)
+	mockElement.mock.AssertNumberOfCalls(t, "Close", 0)
 
-	// 2. Request with mech2 mechanism
-
-	request.Connection.Mechanism = nil
-	request.MechanismPreferences[0].Type = mech2
+	// 2. Update request
 
 	conn, err = server.Request(context.TODO(), request)
 	require.NoError(t, err)
-	require.Equal(t, mech2, conn.Mechanism.Type)
 
-	require.False(t, mechs[mech1])
-	require.True(t, mechs[mech2])
-
-	m.AssertNumberOfCalls(t, "Request", 2)
-	m.AssertNumberOfCalls(t, "Close", 0)
+	mechElement.mock.AssertNumberOfCalls(t, "Request", 1)
+	mechElement.mock.AssertNumberOfCalls(t, "Close", 0)
+	mockElement.mock.AssertNumberOfCalls(t, "Request", 2)
+	mockElement.mock.AssertNumberOfCalls(t, "Close", 0)
 
 	// 3. Close
 
 	_, err = server.Close(context.TODO(), conn)
 	require.NoError(t, err)
 
-	require.False(t, mechs[mech1])
-	require.False(t, mechs[mech2])
+	require.False(t, mechElement.mechs[mech1])
+	require.False(t, mechElement.mechs[mech2])
 
-	m.AssertNumberOfCalls(t, "Request", 2)
-	m.AssertNumberOfCalls(t, "Close", 1)
+	mechElement.mock.AssertNumberOfCalls(t, "Request", 1)
+	mechElement.mock.AssertNumberOfCalls(t, "Close", 1)
+	mockElement.mock.AssertNumberOfCalls(t, "Request", 2)
+	mockElement.mock.AssertNumberOfCalls(t, "Close", 1)
+}
+
+func TestResetMechanismServer_Request_Change(t *testing.T) {
+	mechElement := newMechChainElement()
+	mockElement := newMockChainElement()
+
+	server := chain.NewNetworkServiceServer(
+		resetmechanism.NewServer(mechElement),
+		mockElement,
+	)
+
+	// 1. Request with mech1 mechanism
+
+	conn, err := server.Request(context.TODO(), testRequest(mech1))
+	require.NoError(t, err)
+	require.Equal(t, mech1, conn.Mechanism.Type)
+
+	require.True(t, mechElement.mechs[mech1])
+
+	mechElement.mock.AssertNumberOfCalls(t, "Request", 1)
+	mechElement.mock.AssertNumberOfCalls(t, "Close", 0)
+	mockElement.mock.AssertNumberOfCalls(t, "Request", 1)
+	mockElement.mock.AssertNumberOfCalls(t, "Close", 0)
+
+	// 2. Request with mech2 mechanism
+
+	conn, err = server.Request(context.TODO(), testRequest(mech2))
+	require.NoError(t, err)
+	require.Equal(t, mech2, conn.Mechanism.Type)
+
+	require.False(t, mechElement.mechs[mech1])
+	require.True(t, mechElement.mechs[mech2])
+
+	mechElement.mock.AssertNumberOfCalls(t, "Request", 2)
+	mechElement.mock.AssertNumberOfCalls(t, "Close", 1)
+	mockElement.mock.AssertNumberOfCalls(t, "Request", 2)
+	mockElement.mock.AssertNumberOfCalls(t, "Close", 0)
+
+	// 3. Close
+
+	_, err = server.Close(context.TODO(), conn)
+	require.NoError(t, err)
+
+	require.False(t, mechElement.mechs[mech1])
+	require.False(t, mechElement.mechs[mech2])
+
+	mechElement.mock.AssertNumberOfCalls(t, "Request", 2)
+	mechElement.mock.AssertNumberOfCalls(t, "Close", 2)
+	mockElement.mock.AssertNumberOfCalls(t, "Request", 2)
+	mockElement.mock.AssertNumberOfCalls(t, "Close", 1)
 }
 
 type mechChainElement struct {
+	mock  mock.Mock
 	mechs map[string]bool
 }
 
+func newMechChainElement() *mechChainElement {
+	m := &mechChainElement{
+		mechs: map[string]bool{},
+	}
+
+	m.mock.On("Request", mock.Anything, mock.Anything).
+		Return(nil, nil)
+	m.mock.On("Close", mock.Anything, mock.Anything).
+		Return(nil, nil)
+
+	return m
+}
+
 func (m *mechChainElement) Request(ctx context.Context, request *networkservice.NetworkServiceRequest) (*networkservice.Connection, error) {
+	m.mock.Called(ctx, request)
+
 	mech := request.GetMechanismPreferences()[0]
 	request.GetConnection().Mechanism = mech
 	m.mechs[mech.GetType()] = true
@@ -112,6 +176,8 @@ func (m *mechChainElement) Request(ctx context.Context, request *networkservice.
 }
 
 func (m *mechChainElement) Close(ctx context.Context, conn *networkservice.Connection) (*empty.Empty, error) {
+	m.mock.Called(ctx, conn)
+
 	mech := conn.GetMechanism()
 	m.mechs[mech.GetType()] = false
 
@@ -119,15 +185,26 @@ func (m *mechChainElement) Close(ctx context.Context, conn *networkservice.Conne
 }
 
 type mockChainElement struct {
-	mock *mock.Mock
+	mock mock.Mock
 }
 
-func (f *mockChainElement) Request(ctx context.Context, request *networkservice.NetworkServiceRequest) (*networkservice.Connection, error) {
-	f.mock.Called(ctx, request)
+func (m *mockChainElement) Request(ctx context.Context, request *networkservice.NetworkServiceRequest) (*networkservice.Connection, error) {
+	m.mock.Called(ctx, request)
 	return next.Server(ctx).Request(ctx, request)
 }
 
-func (f *mockChainElement) Close(ctx context.Context, conn *networkservice.Connection) (*empty.Empty, error) {
-	f.mock.Called(ctx, conn)
+func (m *mockChainElement) Close(ctx context.Context, conn *networkservice.Connection) (*empty.Empty, error) {
+	m.mock.Called(ctx, conn)
 	return next.Server(ctx).Close(ctx, conn)
+}
+
+func newMockChainElement() *mockChainElement {
+	m := &mockChainElement{}
+
+	m.mock.On("Request", mock.Anything, mock.Anything).
+		Return(nil, nil)
+	m.mock.On("Close", mock.Anything, mock.Anything).
+		Return(nil, nil)
+
+	return m
 }

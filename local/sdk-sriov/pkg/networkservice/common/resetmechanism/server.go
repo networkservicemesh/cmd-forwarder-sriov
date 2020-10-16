@@ -21,9 +21,11 @@ import (
 	"context"
 
 	"github.com/golang/protobuf/ptypes/empty"
+	"github.com/networkservicemesh/sdk/pkg/networkservice/core/chainbreak"
+
+	"github.com/networkservicemesh/sdk/pkg/networkservice/core/next"
 
 	"github.com/networkservicemesh/api/pkg/api/networkservice"
-	"github.com/networkservicemesh/sdk/pkg/networkservice/core/chain"
 )
 
 type resetMechanismServer struct {
@@ -43,29 +45,25 @@ func (s *resetMechanismServer) Request(ctx context.Context, request *networkserv
 	connID := request.GetConnection().GetId()
 
 	if storedMech, ok := s.connMechanisms[connID]; ok {
-		if mech := request.GetConnection().GetMechanism(); mech == nil || mech.GetType() != storedMech.GetType() {
-			conn := request.GetConnection().Clone()
-			conn.Mechanism = storedMech
-			// we need to close only the wrapped part, not whole chain
-			if _, err := chain.NewNetworkServiceServer(
-				s.wrappedServer,
-				&dummyServer{},
-			).Close(ctx, conn); err != nil {
-				return nil, err
-			}
+		mech := request.GetConnection().GetMechanism()
+		if mech.GetType() == storedMech.GetType() {
+			// mechanism is the same, there is no need to request the wrapped server
+			return next.Server(ctx).Request(ctx, request)
+		}
+
+		// requested mechanism has been changed, we need to reset the connection for the wrapped server
+		conn := request.GetConnection().Clone()
+		conn.Mechanism = storedMech
+		if _, err := chainbreak.NewNetworkServiceServer(s.wrappedServer).Close(ctx, conn); err != nil {
+			return nil, err
 		}
 	}
 
 	conn, err := s.wrappedServer.Request(ctx, request)
-	if err != nil {
-		return nil, err
-	}
-
-	if mech := conn.GetMechanism(); mech != nil {
+	if mech := conn.GetMechanism(); err == nil && mech != nil {
 		s.connMechanisms[connID] = mech.Clone()
 	}
-
-	return conn, nil
+	return conn, err
 }
 
 func (s *resetMechanismServer) Close(ctx context.Context, conn *networkservice.Connection) (*empty.Empty, error) {
