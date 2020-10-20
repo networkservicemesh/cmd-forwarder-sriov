@@ -4,28 +4,26 @@ go 1.14
 
 require (
 	github.com/antonfisher/nested-logrus-formatter v1.1.0
-	github.com/edwarnicke/exechelper v1.0.1
+	github.com/edwarnicke/exechelper v1.0.2
 	github.com/edwarnicke/grpcfd v0.0.0-20200920223154-d5b6e1f19bd0
 	github.com/fsnotify/fsnotify v1.4.9
-	github.com/golang/protobuf v1.4.2
-	github.com/google/uuid v1.1.1
+	github.com/golang/protobuf v1.4.3
+	github.com/google/uuid v1.1.2
 	github.com/kelseyhightower/envconfig v1.4.0
-	github.com/networkservicemesh/api v0.0.0-20201014184533-ca42a07d7e15
-	github.com/networkservicemesh/sdk v0.0.0-20201015042109-4a2e1b7772e1
-	github.com/networkservicemesh/sdk-kernel v0.0.0-20201015042425-a682f922e33c
-	github.com/networkservicemesh/sdk-sriov v0.0.0-20200925074707-560e262ef600
+	github.com/networkservicemesh/api v0.0.0-20201015041133-d89219eefcc1
+	github.com/networkservicemesh/sdk v0.0.0-20201020111206-fbf9869cd441
+	github.com/networkservicemesh/sdk-kernel v0.0.0-20201019161104-c7129f839207
+	github.com/networkservicemesh/sdk-sriov v0.0.0-20201020105653-991263e30847
 	github.com/pkg/errors v0.9.1
 	github.com/sirupsen/logrus v1.6.0
 	github.com/spiffe/go-spiffe/v2 v2.0.0-alpha.4.0.20200528145730-dc11d0c74e85
 	github.com/stretchr/testify v1.6.1
-	google.golang.org/grpc v1.32.0
+	google.golang.org/grpc v1.33.0
 	k8s.io/kubelet v0.18.6
 	k8s.io/kubernetes v1.18.6
 )
 
 replace (
-	github.com/networkservicemesh/sdk => github.com/Bolodya1997/sdk v0.0.0-20201016074455-d60e27b21402
-	github.com/networkservicemesh/sdk-sriov => github.com/Bolodya1997/sdk-sriov v0.0.0-20201015113325-3a18674a8e09
 	k8s.io/api => k8s.io/api v0.18.6
 	k8s.io/apiextensions-apiserver => k8s.io/apiextensions-apiserver v0.18.6
 	k8s.io/apimachinery => k8s.io/apimachinery v0.18.7-rc.0
