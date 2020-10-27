@@ -25,8 +25,8 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	"github.com/networkservicemesh/cmd-forwarder-sriov/local/sdk-sriov/pkg/k8s"
-	"github.com/networkservicemesh/cmd-forwarder-sriov/local/sdk-sriov/pkg/tools/channeltest"
+	"github.com/networkservicemesh/cmd-forwarder-sriov/internal/k8s"
+	"github.com/networkservicemesh/cmd-forwarder-sriov/internal/tools/channeltest"
 )
 
 const (

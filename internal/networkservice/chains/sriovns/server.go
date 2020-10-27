@@ -14,8 +14,8 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-// Package sriov provides an Endpoint that implements the networks service for use as a Forwarder SRIOV
-package sriov
+// Package sriovns provides an Endpoint implementing the SR-IOV Forwarder networks service
+package sriovns
 
 import (
 	"context"
@@ -51,20 +51,26 @@ import (
 	"github.com/networkservicemesh/sdk/pkg/tools/addressof"
 	"github.com/networkservicemesh/sdk/pkg/tools/token"
 
-	"github.com/networkservicemesh/cmd-forwarder-sriov/local/sdk-sriov/pkg/networkservice/common/noop"
-	"github.com/networkservicemesh/cmd-forwarder-sriov/local/sdk-sriov/pkg/networkservice/common/resetmechanism"
+	"github.com/networkservicemesh/cmd-forwarder-sriov/internal/networkservice/common/noop"
+	"github.com/networkservicemesh/cmd-forwarder-sriov/internal/networkservice/common/resetmechanism"
 )
 
 type sriovServer struct {
 	endpoint.Endpoint
 }
 
-// NewServer - returns a nsm client for use as a Forwarder
-//             -name - name of the Forwarder
-//             -authzServer - policy for allowing or rejecting requests
-//             -tokenGenerator - token.GeneratorFunc - generates tokens for use in Path
-//             -clientUrl - *url.URL for the talking to the NSMgr
-//             -...clientDialOptions - dialOptions for dialing the NSMgr
+// NewServer - returns an Endpoint implementing the SR-IOV Forwarder networks service
+//             - name - name of the Forwarder
+//             - authzServer - policy for allowing or rejecting requests
+//             - tokenGenerator - token.GeneratorFunc - generates tokens for use in Path
+//             - tokenPool - provides SR-IOV resource tokens
+//             - sriovConfig - SR-IOV PCI functions config
+//             - functions - SR-IOV PCI functions (PF -> []VF)
+//             - binders - SR-IOV PCI driver binders (IOMMU group -> []PCI Function driver binder)
+//             - vfioDir - host /dev/vfio directory mount location
+//             - cgroupBaseDir - host /sys/fs/cgroup/devices directory mount location
+//             - clientUrl - *url.URL for the talking to the NSMgr
+//             - ...clientDialOptions - dialOptions for dialing the NSMgr
 func NewServer(
 	ctx context.Context,
 	name string,

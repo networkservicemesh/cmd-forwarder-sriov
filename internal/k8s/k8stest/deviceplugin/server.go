@@ -26,7 +26,7 @@ import (
 	"google.golang.org/grpc"
 	pluginapi "k8s.io/kubelet/pkg/apis/deviceplugin/v1beta1"
 
-	"github.com/networkservicemesh/cmd-forwarder-sriov/local/sdk-sriov/pkg/tools/socketpath"
+	"github.com/networkservicemesh/cmd-forwarder-sriov/internal/tools/socketpath"
 )
 
 type registrationServer struct {

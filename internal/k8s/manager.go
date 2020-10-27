@@ -31,8 +31,8 @@ import (
 	pluginapi "k8s.io/kubelet/pkg/apis/deviceplugin/v1beta1"
 	podresources "k8s.io/kubernetes/pkg/kubelet/apis/podresources/v1alpha1"
 
-	"github.com/networkservicemesh/cmd-forwarder-sriov/local/sdk-sriov/pkg/tools/fswatcher"
-	"github.com/networkservicemesh/cmd-forwarder-sriov/local/sdk-sriov/pkg/tools/socketpath"
+	"github.com/networkservicemesh/cmd-forwarder-sriov/internal/tools/fswatcher"
+	"github.com/networkservicemesh/cmd-forwarder-sriov/internal/tools/socketpath"
 )
 
 const (

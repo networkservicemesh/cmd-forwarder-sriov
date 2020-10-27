@@ -160,4 +160,8 @@ issues:
     - path: main.go
       linters:
         - funlen
-      text: "Function 'main' is too long"
+      text: "Function 'main' has too many statements"
+    - path: suite_setup_test.go
+      linters:
+        - funlen
+      text: "Function 'SetupSuite' has too many statements"

@@ -24,6 +24,7 @@ import (
 
 	nested "github.com/antonfisher/nested-logrus-formatter"
 	"github.com/edwarnicke/grpcfd"
+	"github.com/golang/protobuf/ptypes"
 	"github.com/kelseyhightower/envconfig"
 	sriovconfig "github.com/networkservicemesh/sdk-sriov/pkg/sriov/config"
 	"github.com/networkservicemesh/sdk-sriov/pkg/sriov/token"
@@ -33,23 +34,27 @@ import (
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials"
 
+	registryapi "github.com/networkservicemesh/api/pkg/api/registry"
 	"github.com/networkservicemesh/sdk-sriov/pkg/sriov"
 	"github.com/networkservicemesh/sdk-sriov/pkg/sriov/pcifunction"
 	"github.com/networkservicemesh/sdk/pkg/networkservice/common/authorize"
+	registrysendfd "github.com/networkservicemesh/sdk/pkg/registry/common/sendfd"
+	registrychain "github.com/networkservicemesh/sdk/pkg/registry/core/chain"
 	"github.com/networkservicemesh/sdk/pkg/tools/debug"
 	"github.com/networkservicemesh/sdk/pkg/tools/grpcutils"
 	"github.com/networkservicemesh/sdk/pkg/tools/log"
 	"github.com/networkservicemesh/sdk/pkg/tools/signalctx"
 	"github.com/networkservicemesh/sdk/pkg/tools/spiffejwt"
 
-	"github.com/networkservicemesh/cmd-forwarder-sriov/local/sdk-sriov/pkg/k8s"
-	"github.com/networkservicemesh/cmd-forwarder-sriov/local/sdk-sriov/pkg/k8s/deviceplugin"
-	sriovchain "github.com/networkservicemesh/cmd-forwarder-sriov/local/sdk-sriov/pkg/networkservice/chains/sriov"
+	"github.com/networkservicemesh/cmd-forwarder-sriov/internal/k8s"
+	"github.com/networkservicemesh/cmd-forwarder-sriov/internal/k8s/deviceplugin"
+	"github.com/networkservicemesh/cmd-forwarder-sriov/internal/networkservice/chains/sriovns"
 )
 
 // Config - configuration for cmd-forwarder-sriov
 type Config struct {
 	Name                string        `default:"forwarder" desc:"Name of Endpoint"`
+	NSName              string        `default:"sriovns" desc:"Name of Network Service to Register with Registry"`
 	ListenOn            url.URL       `default:"unix:///listen.on.socket" desc:"url to listen on" split_words:"true"`
 	ConnectTo           url.URL       `default:"unix:///connect.to.socket" desc:"url to connect to" split_words:"true"`
 	MaxTokenLifetime    time.Duration `default:"24h" desc:"maximum lifetime of tokens" split_words:"true"`
@@ -64,35 +69,57 @@ type Config struct {
 }
 
 func main() {
-	// Setup context to catch signals
+	// ********************************************************************************
+	// setup context to catch signals
+	// ********************************************************************************
 	ctx := signalctx.WithSignals(context.Background())
 	ctx, cancel := context.WithCancel(ctx)
 
-	// Setup logging
+	// ********************************************************************************
+	// setup logging
+	// ********************************************************************************
 	logrus.SetFormatter(&nested.Formatter{})
 	logrus.SetLevel(logrus.TraceLevel)
 	ctx = log.WithField(ctx, "cmd", os.Args[0])
 
+	// ********************************************************************************
 	// Debug self if necessary
+	// ********************************************************************************
 	if err := debug.Self(); err != nil {
 		log.Entry(ctx).Infof("%s", err)
 	}
 
 	starttime := time.Now()
 
-	// Get config from environment
-	cfg := &Config{}
-	if err := envconfig.Usage("nsm", cfg); err != nil {
-		logrus.Fatal(err)
+	// enumerating phases
+	log.Entry(ctx).Infof("there are 7 phases which will be executed followed by a success message:")
+	log.Entry(ctx).Infof("the phases include:")
+	log.Entry(ctx).Infof("1: get config from environment")
+	log.Entry(ctx).Infof("2: init PCI functions")
+	log.Entry(ctx).Infof("3: start device plugin server")
+	log.Entry(ctx).Infof("4: retrieve spiffe svid")
+	log.Entry(ctx).Infof("5: create sriovns network service endpoint")
+	log.Entry(ctx).Infof("6: create grpc server and register sriovns")
+	log.Entry(ctx).Infof("7: register xconnectns with the registry")
+	log.Entry(ctx).Infof("a final success message with start time duration")
+
+	// ********************************************************************************
+	log.Entry(ctx).Infof("executing phase 1: get config from environment (time since start: %s)", time.Since(starttime))
+	// ********************************************************************************
+	config := &Config{}
+	if err := envconfig.Usage("nsm", config); err != nil {
+		log.Entry(ctx).Fatal(err)
 	}
-	if err := envconfig.Process("nsm", cfg); err != nil {
-		logrus.Fatalf("error processing config from env: %+v", err)
+	if err := envconfig.Process("nsm", config); err != nil {
+		log.Entry(ctx).Fatalf("error processing config from env: %+v", err)
 	}
 
-	log.Entry(ctx).Infof("Config: %#v", cfg)
+	log.Entry(ctx).Infof("Config: %#v", config)
 
-	// Init PCI physical functions
-	sriovConfig, functions, binders, err := initPCIFunctions(ctx, cfg.SRIOVConfigFile, cfg.PCIDevicesPath, cfg.PCIDriversPath)
+	// ********************************************************************************
+	log.Entry(ctx).Infof("executing phase 2: init PCI functions (time since start: %s)", time.Since(starttime))
+	// ********************************************************************************
+	sriovConfig, functions, binders, err := initPCIFunctions(ctx, config.SRIOVConfigFile, config.PCIDevicesPath, config.PCIDriversPath)
 	if err != nil {
 		log.Entry(ctx).Fatalf("failed to configure PCI physical functions: %+v", err)
 	}
@@ -104,16 +131,21 @@ func main() {
 		}
 	}()
 
+	// ********************************************************************************
+	log.Entry(ctx).Infof("executing phase 3: start device plugin server (time since start: %s)", time.Since(starttime))
+	// ********************************************************************************
 	// Create SR-IOV resource token pool
 	tokenPool := token.NewPool(sriovConfig)
 
 	// Start device plugin server
-	manager := k8s.NewManager(cfg.DevicePluginPath, cfg.PodResourcesPath)
-	if err = deviceplugin.StartServers(ctx, tokenPool, cfg.ResourcePollTimeout, manager); err != nil {
+	manager := k8s.NewManager(config.DevicePluginPath, config.PodResourcesPath)
+	if err = deviceplugin.StartServers(ctx, tokenPool, config.ResourcePollTimeout, manager); err != nil {
 		log.Entry(ctx).Fatalf("failed to start a device plugin server: %+v", err)
 	}
 
-	// Get a X509Source
+	// ********************************************************************************
+	log.Entry(ctx).Infof("executing phase 4: retrieving svid, check spire agent logs if this is the last line you see (time since start: %s)", time.Since(starttime))
+	// ********************************************************************************
 	source, err := workloadapi.NewX509Source(ctx)
 	if err != nil {
 		log.Entry(ctx).Fatalf("error getting x509 source: %+v", err)
@@ -124,18 +156,20 @@ func main() {
 	}
 	log.Entry(ctx).Infof("SVID: %q", svid.ID)
 
-	// SR-IOV Network Service Endpoint
-	endpoint := sriovchain.NewServer(
+	// ********************************************************************************
+	log.Entry(ctx).Infof("executing phase 5: create sriovns network service endpoint (time since start: %s)", time.Since(starttime))
+	// ********************************************************************************
+	endpoint := sriovns.NewServer(
 		ctx,
-		cfg.Name,
+		config.Name,
 		authorize.NewServer(),
-		spiffejwt.TokenGeneratorFunc(source, cfg.MaxTokenLifetime),
+		spiffejwt.TokenGeneratorFunc(source, config.MaxTokenLifetime),
 		tokenPool,
 		sriovConfig,
 		functions,
 		binders,
-		cfg.VFIOPath, cfg.CgroupPath,
-		&cfg.ConnectTo,
+		config.VFIOPath, config.CgroupPath,
+		&config.ConnectTo,
 		grpc.WithTransportCredentials(
 			grpcfd.TransportCredentials(
 				credentials.NewTLS(tlsconfig.MTLSClientConfig(source, source, tlsconfig.AuthorizeAny())),
@@ -144,12 +178,48 @@ func main() {
 		grpc.WithDefaultCallOptions(grpc.WaitForReady(true)),
 	)
 
-	// Create GRPC Server
-	// TODO - add ServerOptions for Tracing
+	// ********************************************************************************
+	log.Entry(ctx).Infof("executing phase 6: create grpc server and register sriovns (time since start: %s)", time.Since(starttime))
+	// ********************************************************************************
+	// TODO: Add ServerOptions for tracing
 	server := grpc.NewServer(grpc.Creds(credentials.NewTLS(tlsconfig.MTLSServerConfig(source, source, tlsconfig.AuthorizeAny()))))
 	endpoint.Register(server)
-	srvErrCh := grpcutils.ListenAndServe(ctx, &cfg.ListenOn, server)
+	srvErrCh := grpcutils.ListenAndServe(ctx, &config.ListenOn, server)
 	exitOnErr(ctx, cancel, srvErrCh)
+
+	// ********************************************************************************
+	log.Entry(ctx).Infof("executing phase 7: register %s with the registry (time since start: %s)", config.NSName, time.Since(starttime))
+	// ********************************************************************************
+	registryCreds := credentials.NewTLS(tlsconfig.MTLSClientConfig(source, source, tlsconfig.AuthorizeAny()))
+	registryCreds = grpcfd.TransportCredentials(registryCreds)
+	registryCC, err := grpc.DialContext(ctx,
+		config.ConnectTo.String(),
+		grpc.WithTransportCredentials(registryCreds),
+		grpc.WithBlock(),
+	)
+	if err != nil {
+		log.Entry(ctx).Fatalf("failed to connect to registry: %+v", err)
+	}
+
+	registryClient := registrychain.NewNetworkServiceEndpointRegistryClient(
+		// TODO - add refresh
+		registrysendfd.NewNetworkServiceEndpointRegistryClient(),
+		registryapi.NewNetworkServiceEndpointRegistryClient(registryCC),
+	)
+	// TODO - something smarter for expireTime
+	expireTime, err := ptypes.TimestampProto(time.Now().Add(config.MaxTokenLifetime))
+	if err != nil {
+		log.Entry(ctx).Fatalf("failed to connect to registry: %+v", err)
+	}
+	_, err = registryClient.Register(ctx, &registryapi.NetworkServiceEndpoint{
+		Name:                config.Name,
+		NetworkServiceNames: []string{config.NSName},
+		Url:                 config.ListenOn.String(),
+		ExpirationTime:      expireTime,
+	})
+	if err != nil {
+		log.Entry(ctx).Fatalf("failed to connect to registry: %+v", err)
+	}
 
 	log.Entry(ctx).Infof("Startup completed in %v", time.Since(starttime))
 

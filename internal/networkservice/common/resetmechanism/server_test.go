@@ -28,7 +28,7 @@ import (
 	"github.com/networkservicemesh/sdk/pkg/networkservice/core/chain"
 	"github.com/networkservicemesh/sdk/pkg/networkservice/core/next"
 
-	"github.com/networkservicemesh/cmd-forwarder-sriov/local/sdk-sriov/pkg/networkservice/common/resetmechanism"
+	"github.com/networkservicemesh/cmd-forwarder-sriov/internal/networkservice/common/resetmechanism"
 )
 
 const (
