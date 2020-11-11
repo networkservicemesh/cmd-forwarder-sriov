@@ -18,9 +18,12 @@
 package sriov
 
 import (
+	"context"
 	"net/url"
 
 	"github.com/networkservicemesh/api/pkg/api/networkservice"
+
+	"google.golang.org/grpc"
 
 	"github.com/networkservicemesh/sdk/pkg/networkservice/chains/client"
 	"github.com/networkservicemesh/sdk/pkg/networkservice/chains/endpoint"
@@ -29,7 +32,6 @@ import (
 	"github.com/networkservicemesh/sdk/pkg/networkservice/core/adapters"
 	"github.com/networkservicemesh/sdk/pkg/tools/addressof"
 	"github.com/networkservicemesh/sdk/pkg/tools/token"
-	"google.golang.org/grpc"
 )
 
 type sriovServer struct {
@@ -42,18 +44,21 @@ type sriovServer struct {
 //             -tokenGenerator - token.GeneratorFunc - generates tokens for use in Path
 //             -clientUrl - *url.URL for the talking to the NSMgr
 //             -...clientDialOptions - dialOptions for dialing the NSMgr
-func NewServer(name string, authzServer networkservice.NetworkServiceServer, tokenGenerator token.GeneratorFunc, clientURL *url.URL, clientDialOptions ...grpc.DialOption) endpoint.Endpoint {
+func NewServer(ctx context.Context, name string, authzServer networkservice.NetworkServiceServer, tokenGenerator token.GeneratorFunc, clientURL *url.URL, clientDialOptions ...grpc.DialOption) endpoint.Endpoint {
 	rv := sriovServer{}
 	rv.Endpoint = endpoint.NewServer(
+		ctx,
 		name,
 		authzServer,
 		tokenGenerator,
 		clienturl.NewServer(clientURL),
-		connect.NewServer(client.NewClientFactory(
-			name,
-			// What to call onHeal
-			addressof.NetworkServiceClient(adapters.NewServerToClient(rv)),
-			tokenGenerator),
+		connect.NewServer(
+			ctx,
+			client.NewClientFactory(
+				name,
+				// What to call onHeal
+				addressof.NetworkServiceClient(adapters.NewServerToClient(rv)),
+				tokenGenerator),
 			clientDialOptions...,
 		),
 	)

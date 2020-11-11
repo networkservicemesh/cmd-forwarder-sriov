@@ -125,6 +125,7 @@ func main() {
 	)
 	// XConnect Network Service Endpoint
 	endpoint := sriov.NewServer(
+		ctx,
 		config.Name,
 		authorize.NewServer(),
 		spiffejwt.TokenGeneratorFunc(source, config.MaxTokenLifetime),
