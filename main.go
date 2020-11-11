@@ -18,6 +18,8 @@ package main
 
 import (
 	"context"
+	"github.com/networkservicemesh/sdk/pkg/tools/jaeger"
+	"github.com/networkservicemesh/sdk/pkg/tools/spanhelper"
 	"net/url"
 	"os"
 	"time"
@@ -72,6 +74,10 @@ func main() {
 		log.Entry(ctx).Infof("%s", err)
 	}
 
+	// Configure open tracing
+	jaegerCloser := jaeger.InitJaeger("cmd-forwarder-sriov")
+	defer func() { _ = jaegerCloser.Close() }()
+
 	starttime := time.Now()
 
 	// Get config from environment
@@ -107,19 +113,34 @@ func main() {
 	}
 	logrus.Infof("SVID: %q", svid.ID)
 
+	dialOptions := append(
+		spanhelper.WithTracingDial(),
+		grpc.WithTransportCredentials(
+			credentials.NewTLS(
+				tlsconfig.MTLSClientConfig(source, source, tlsconfig.AuthorizeAny()),
+			),
+		),
+		grpc.WithDefaultCallOptions(grpc.WaitForReady(true)),
+	)
 	// XConnect Network Service Endpoint
 	endpoint := sriov.NewServer(
 		config.Name,
 		authorize.NewServer(),
 		spiffejwt.TokenGeneratorFunc(source, config.MaxTokenLifetime),
 		&config.ConnectTo,
-		grpc.WithTransportCredentials(credentials.NewTLS(tlsconfig.MTLSClientConfig(source, source, tlsconfig.AuthorizeAny()))),
-		grpc.WithDefaultCallOptions(grpc.WaitForReady(true)),
+		dialOptions...,
 	)
 
 	// Create GRPC Server
-	// TODO - add ServerOptions for Tracing
-	server := grpc.NewServer(grpc.Creds(credentials.NewTLS(tlsconfig.MTLSServerConfig(source, source, tlsconfig.AuthorizeAny()))))
+	serverOptions := append(
+		spanhelper.WithTracing(),
+		grpc.Creds(
+			credentials.NewTLS(
+				tlsconfig.MTLSServerConfig(source, source, tlsconfig.AuthorizeAny()),
+			),
+		),
+	)
+	server := grpc.NewServer(serverOptions...)
 	endpoint.Register(server)
 	srvErrCh := grpcutils.ListenAndServe(ctx, &config.ListenOn, server)
 	exitOnErr(ctx, cancel, srvErrCh)
