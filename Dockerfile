@@ -26,3 +26,8 @@ ENV NSM_DEVICEPLUGINPATH=/build/k8s-stub/device-plugins
 RUN mkdir -p ./k8s-stub/pod-resources
 ENV NSM_PODRESOURCESPATH=/build/k8s-stub/pod-resources
 CMD ["/bin/bash", "-c", "./k8s_api_stub > k8s_api_stub.out & go test -test.v ./..."]
+
+FROM alpine as runtime
+COPY --from=build /bin/forwarder /bin/forwarder
+COPY --from=build /bin/dlv /bin/dlv
+CMD /bin/forwarder
