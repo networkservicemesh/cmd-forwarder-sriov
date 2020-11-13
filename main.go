@@ -26,8 +26,6 @@ import (
 	"github.com/edwarnicke/grpcfd"
 	"github.com/golang/protobuf/ptypes"
 	"github.com/kelseyhightower/envconfig"
-	sriovconfig "github.com/networkservicemesh/sdk-sriov/pkg/sriov/config"
-	"github.com/networkservicemesh/sdk-sriov/pkg/sriov/token"
 	"github.com/sirupsen/logrus"
 	"github.com/spiffe/go-spiffe/v2/spiffetls/tlsconfig"
 	"github.com/spiffe/go-spiffe/v2/workloadapi"
@@ -36,7 +34,9 @@ import (
 
 	registryapi "github.com/networkservicemesh/api/pkg/api/registry"
 	"github.com/networkservicemesh/sdk-sriov/pkg/sriov"
+	sriovconfig "github.com/networkservicemesh/sdk-sriov/pkg/sriov/config"
 	"github.com/networkservicemesh/sdk-sriov/pkg/sriov/pcifunction"
+	"github.com/networkservicemesh/sdk-sriov/pkg/sriov/token"
 	"github.com/networkservicemesh/sdk/pkg/networkservice/common/authorize"
 	registrysendfd "github.com/networkservicemesh/sdk/pkg/registry/common/sendfd"
 	registrychain "github.com/networkservicemesh/sdk/pkg/registry/core/chain"
@@ -53,7 +53,7 @@ import (
 
 // Config - configuration for cmd-forwarder-sriov
 type Config struct {
-	Name                string        `default:"forwarder" desc:"Name of Endpoint"`
+	Name                string        `default:"interpose-nse#sriov-forwarder" desc:"Name of Endpoint"`
 	NSName              string        `default:"sriovns" desc:"Name of Network Service to Register with Registry"`
 	ListenOn            url.URL       `default:"unix:///listen.on.socket" desc:"url to listen on" split_words:"true"`
 	ConnectTo           url.URL       `default:"unix:///connect.to.socket" desc:"url to connect to" split_words:"true"`
@@ -61,7 +61,7 @@ type Config struct {
 	ResourcePollTimeout time.Duration `default:"30s" desc:"device plugin polling timeout" split_words:"true"`
 	DevicePluginPath    string        `default:"/var/lib/kubelet/device-plugins/" desc:"path to the device plugin directory" split_words:"true"`
 	PodResourcesPath    string        `default:"/var/lib/kubelet/pod-resources/" desc:"path to the pod resources directory" split_words:"true"`
-	SRIOVConfigFile     string        `default:"/networkservicemesh/pci.config" desc:"PCI resources config path" split_words:"true"`
+	SRIOVConfigFile     string        `default:"pci.config" desc:"PCI resources config path" split_words:"true"`
 	PCIDevicesPath      string        `default:"/sys/bus/pci/devices" desc:"path to the PCI devices directory" split_words:"true"`
 	PCIDriversPath      string        `default:"/sys/bus/pci/drivers" desc:"path to the PCI drivers directory" split_words:"true"`
 	CgroupPath          string        `default:"/host/sys/fs/cgroup/devices" desc:"path to the host cgroup directory" split_words:"true"`
@@ -182,7 +182,11 @@ func main() {
 	log.Entry(ctx).Infof("executing phase 6: create grpc server and register sriovns (time since start: %s)", time.Since(starttime))
 	// ********************************************************************************
 	// TODO: Add ServerOptions for tracing
-	server := grpc.NewServer(grpc.Creds(credentials.NewTLS(tlsconfig.MTLSServerConfig(source, source, tlsconfig.AuthorizeAny()))))
+	server := grpc.NewServer(grpc.Creds(
+		grpcfd.TransportCredentials(
+			credentials.NewTLS(tlsconfig.MTLSServerConfig(source, source, tlsconfig.AuthorizeAny())),
+		),
+	))
 	endpoint.Register(server)
 	srvErrCh := grpcutils.ListenAndServe(ctx, &config.ListenOn, server)
 	exitOnErr(ctx, cancel, srvErrCh)
