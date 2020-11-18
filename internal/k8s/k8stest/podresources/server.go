@@ -21,7 +21,7 @@ import (
 	"context"
 
 	"google.golang.org/grpc"
-	podresources "k8s.io/kubernetes/pkg/kubelet/apis/podresources/v1alpha1"
+	podresources "k8s.io/kubelet/pkg/apis/podresources/v1alpha1"
 )
 
 type podResourcesListerServer struct{}

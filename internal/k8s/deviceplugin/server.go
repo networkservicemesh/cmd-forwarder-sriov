@@ -25,7 +25,7 @@ import (
 	"github.com/networkservicemesh/sdk-sriov/pkg/tools/tokens"
 	"github.com/networkservicemesh/sdk/pkg/tools/log"
 	pluginapi "k8s.io/kubelet/pkg/apis/deviceplugin/v1beta1"
-	podresources "k8s.io/kubernetes/pkg/kubelet/apis/podresources/v1alpha1"
+	podresources "k8s.io/kubelet/pkg/apis/podresources/v1alpha1"
 )
 
 // TokenPool is a token.Pool interface
@@ -43,6 +43,8 @@ type K8sManager interface {
 	MonitorKubeletRestart(ctx context.Context) (chan bool, error)
 	GetPodResourcesListerClient(ctx context.Context) (podresources.PodResourcesListerClient, error)
 }
+
+var _ pluginapi.DevicePluginServer = (*devicePluginServer)(nil)
 
 type devicePluginServer struct {
 	lock                 sync.Mutex
@@ -230,6 +232,10 @@ func (s *devicePluginServer) listAndWatchResponse() *pluginapi.ListAndWatchRespo
 	return &pluginapi.ListAndWatchResponse{
 		Devices: devices,
 	}
+}
+
+func (s *devicePluginServer) GetPreferredAllocation(_ context.Context, _ *pluginapi.PreferredAllocationRequest) (*pluginapi.PreferredAllocationResponse, error) {
+	return &pluginapi.PreferredAllocationResponse{}, nil
 }
 
 func (s *devicePluginServer) Allocate(_ context.Context, request *pluginapi.AllocateRequest) (*pluginapi.AllocateResponse, error) {
