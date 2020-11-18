@@ -18,14 +18,18 @@ package main
 
 import (
 	"context"
+	"io/ioutil"
 	"net/url"
 	"os"
+	"path"
 	"time"
 
 	nested "github.com/antonfisher/nested-logrus-formatter"
 	"github.com/edwarnicke/grpcfd"
 	"github.com/golang/protobuf/ptypes"
 	"github.com/kelseyhightower/envconfig"
+	"github.com/networkservicemesh/sdk/pkg/tools/jaeger"
+	"github.com/networkservicemesh/sdk/pkg/tools/spanhelper"
 	"github.com/sirupsen/logrus"
 	"github.com/spiffe/go-spiffe/v2/spiffetls/tlsconfig"
 	"github.com/spiffe/go-spiffe/v2/workloadapi"
@@ -55,7 +59,6 @@ import (
 type Config struct {
 	Name                string        `default:"interpose-nse#sriov-forwarder" desc:"Name of Endpoint"`
 	NSName              string        `default:"sriovns" desc:"Name of Network Service to Register with Registry"`
-	ListenOn            url.URL       `default:"unix:///listen.on.socket" desc:"url to listen on" split_words:"true"`
 	ConnectTo           url.URL       `default:"unix:///connect.to.socket" desc:"url to connect to" split_words:"true"`
 	MaxTokenLifetime    time.Duration `default:"24h" desc:"maximum lifetime of tokens" split_words:"true"`
 	ResourcePollTimeout time.Duration `default:"30s" desc:"device plugin polling timeout" split_words:"true"`
@@ -81,6 +84,12 @@ func main() {
 	logrus.SetFormatter(&nested.Formatter{})
 	logrus.SetLevel(logrus.TraceLevel)
 	ctx = log.WithField(ctx, "cmd", os.Args[0])
+
+	// ********************************************************************************
+	// Configure open tracing
+	// ********************************************************************************
+	jaegerCloser := jaeger.InitJaeger("cmd-forwarder-sriov")
+	defer func() { _ = jaegerCloser.Close() }()
 
 	// ********************************************************************************
 	// Debug self if necessary
@@ -181,14 +190,22 @@ func main() {
 	// ********************************************************************************
 	log.Entry(ctx).Infof("executing phase 6: create grpc server and register sriovns (time since start: %s)", time.Since(starttime))
 	// ********************************************************************************
-	// TODO: Add ServerOptions for tracing
-	server := grpc.NewServer(grpc.Creds(
-		grpcfd.TransportCredentials(
-			credentials.NewTLS(tlsconfig.MTLSServerConfig(source, source, tlsconfig.AuthorizeAny())),
-		),
-	))
+	tmpDir, err := ioutil.TempDir("", "sriov-forwarder")
+	if err != nil {
+		log.Entry(ctx).Fatalf("error creating tmpDir: %+v", err)
+	}
+	defer func() { _ = os.RemoveAll(tmpDir) }()
+	listenOn := &url.URL{Scheme: "unix", Path: path.Join(tmpDir, "listen_on.io.sock")}
+
+	server := grpc.NewServer(append(
+		spanhelper.WithTracing(),
+		grpc.Creds(
+			grpcfd.TransportCredentials(
+				credentials.NewTLS(tlsconfig.MTLSServerConfig(source, source, tlsconfig.AuthorizeAny())),
+			),
+		))...)
 	endpoint.Register(server)
-	srvErrCh := grpcutils.ListenAndServe(ctx, &config.ListenOn, server)
+	srvErrCh := grpcutils.ListenAndServe(ctx, listenOn, server)
 	exitOnErr(ctx, cancel, srvErrCh)
 
 	// ********************************************************************************
@@ -197,9 +214,12 @@ func main() {
 	registryCreds := credentials.NewTLS(tlsconfig.MTLSClientConfig(source, source, tlsconfig.AuthorizeAny()))
 	registryCreds = grpcfd.TransportCredentials(registryCreds)
 	registryCC, err := grpc.DialContext(ctx,
-		config.ConnectTo.String(),
-		grpc.WithTransportCredentials(registryCreds),
-		grpc.WithBlock(),
+		grpcutils.URLToTarget(&config.ConnectTo),
+		append(
+			spanhelper.WithTracingDial(),
+			grpc.WithTransportCredentials(registryCreds),
+			grpc.WithBlock(),
+		)...,
 	)
 	if err != nil {
 		log.Entry(ctx).Fatalf("failed to connect to registry: %+v", err)
@@ -218,7 +238,7 @@ func main() {
 	_, err = registryClient.Register(ctx, &registryapi.NetworkServiceEndpoint{
 		Name:                config.Name,
 		NetworkServiceNames: []string{config.NSName},
-		Url:                 config.ListenOn.String(),
+		Url:                 grpcutils.URLToTarget(listenOn),
 		ExpirationTime:      expireTime,
 	})
 	if err != nil {
