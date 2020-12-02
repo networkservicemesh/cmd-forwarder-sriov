@@ -92,7 +92,7 @@ func NewServer(
 		return chain.NewNetworkServiceServer(
 			clienturl.NewServer(clientURL),
 			connect.NewServer(ctx,
-				client.NewClientFactory(
+				client.NewCrossConnectClientFactory(
 					name,
 					// What to call onHeal
 					addressof.NetworkServiceClient(adapters.NewServerToClient(rv)),
