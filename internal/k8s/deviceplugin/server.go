@@ -30,6 +30,7 @@ import (
 
 // TokenPool is a token.Pool interface
 type TokenPool interface {
+	Restore(ids map[string][]string) error
 	AddListener(listener func())
 	Tokens() map[string]map[string]bool
 	Allocate(id string) error
@@ -73,6 +74,13 @@ func StartServers(
 		return err
 	}
 
+	resp, err := resourceListerClient.List(ctx, new(podresources.ListPodResourcesRequest))
+	if err != nil {
+		logEntry.Errorf("resourceListerClient unavailable: %+v", err)
+		return err
+	}
+	_ = tokenPool.Restore(respToDeviceIDs(resp))
+
 	for name := range tokenPool.Tokens() {
 		s := &devicePluginServer{
 			ctx:                  ctx,
@@ -108,6 +116,18 @@ func StartServers(
 		}
 	}
 	return nil
+}
+
+func respToDeviceIDs(resp *podresources.ListPodResourcesResponse) map[string][]string {
+	deviceIDs := map[string][]string{}
+	for _, pod := range resp.PodResources {
+		for _, container := range pod.Containers {
+			for _, device := range container.Devices {
+				deviceIDs[device.ResourceName] = append(deviceIDs[device.ResourceName], device.DeviceIds...)
+			}
+		}
+	}
+	return deviceIDs
 }
 
 func (s *devicePluginServer) update() {
@@ -160,7 +180,7 @@ func (s *devicePluginServer) ListAndWatch(_ *pluginapi.Empty, server pluginapi.D
 	logEntry := log.Entry(s.ctx).WithField("devicePluginServer", "ListAndWatch")
 
 	for {
-		resp, err := s.resourceListerClient.List(s.ctx, &podresources.ListPodResourcesRequest{})
+		resp, err := s.resourceListerClient.List(s.ctx, new(podresources.ListPodResourcesRequest))
 		if err != nil {
 			logEntry.Errorf("resourceListerClient unavailable: %+v", err)
 			return err

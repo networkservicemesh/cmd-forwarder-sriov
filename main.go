@@ -30,6 +30,8 @@ import (
 	"github.com/edwarnicke/grpcfd"
 	"github.com/golang/protobuf/ptypes"
 	"github.com/kelseyhightower/envconfig"
+	"github.com/networkservicemesh/sdk-sriov/pkg/sriov/pci"
+	"github.com/networkservicemesh/sdk-sriov/pkg/sriov/resource"
 	"github.com/networkservicemesh/sdk/pkg/tools/jaeger"
 	"github.com/networkservicemesh/sdk/pkg/tools/spanhelper"
 	"github.com/sirupsen/logrus"
@@ -39,9 +41,7 @@ import (
 	"google.golang.org/grpc/credentials"
 
 	registryapi "github.com/networkservicemesh/api/pkg/api/registry"
-	"github.com/networkservicemesh/sdk-sriov/pkg/sriov"
 	sriovconfig "github.com/networkservicemesh/sdk-sriov/pkg/sriov/config"
-	"github.com/networkservicemesh/sdk-sriov/pkg/sriov/pcifunction"
 	"github.com/networkservicemesh/sdk-sriov/pkg/sriov/token"
 	"github.com/networkservicemesh/sdk/pkg/networkservice/common/authorize"
 	registrysendfd "github.com/networkservicemesh/sdk/pkg/registry/common/sendfd"
@@ -103,15 +103,16 @@ func main() {
 	starttime := time.Now()
 
 	// enumerating phases
-	log.Entry(ctx).Infof("there are 7 phases which will be executed followed by a success message:")
+	log.Entry(ctx).Infof("there are 8 phases which will be executed followed by a success message:")
 	log.Entry(ctx).Infof("the phases include:")
 	log.Entry(ctx).Infof("1: get config from environment")
-	log.Entry(ctx).Infof("2: init PCI functions")
-	log.Entry(ctx).Infof("3: start device plugin server")
-	log.Entry(ctx).Infof("4: retrieve spiffe svid")
-	log.Entry(ctx).Infof("5: create sriovns network service endpoint")
-	log.Entry(ctx).Infof("6: create grpc server and register sriovns")
-	log.Entry(ctx).Infof("7: register xconnectns with the registry")
+	log.Entry(ctx).Infof("2: get SR-IOV config from file")
+	log.Entry(ctx).Infof("3: init pools")
+	log.Entry(ctx).Infof("4: start device plugin server")
+	log.Entry(ctx).Infof("5: retrieve spiffe svid")
+	log.Entry(ctx).Infof("6: create sriovns network service endpoint")
+	log.Entry(ctx).Infof("7: create grpc server and register sriovns")
+	log.Entry(ctx).Infof("8: register xconnectns with the registry")
 	log.Entry(ctx).Infof("a final success message with start time duration")
 
 	// ********************************************************************************
@@ -128,25 +129,33 @@ func main() {
 	log.Entry(ctx).Infof("Config: %#v", config)
 
 	// ********************************************************************************
-	log.Entry(ctx).Infof("executing phase 2: init PCI functions (time since start: %s)", time.Since(starttime))
+	log.Entry(ctx).Infof("executing phase 2: get SR-IOV config from file (time since start: %s)", time.Since(starttime))
 	// ********************************************************************************
-	sriovConfig, functions, binders, err := initPCIFunctions(ctx, config.SRIOVConfigFile, config.PCIDevicesPath, config.PCIDriversPath)
+	sriovConfig, err := sriovconfig.ReadConfig(ctx, config.SRIOVConfigFile)
 	if err != nil {
-		log.Entry(ctx).Fatalf("failed to configure PCI physical functions: %+v", err)
+		log.Entry(ctx).Fatalf("failed to get PCI resources config: %+v", err)
 	}
-	defer func() {
-		for _, igBinders := range binders {
-			for _, binder := range igBinders {
-				_ = binder.BindKernelDriver()
-			}
-		}
-	}()
+
+	if err = pci.UpdateConfig(config.PCIDevicesPath, config.PCIDriversPath, sriovConfig); err != nil {
+		log.Entry(ctx).Fatalf("failed to update PCI resources config with VFs: %+v", err)
+	}
 
 	// ********************************************************************************
-	log.Entry(ctx).Infof("executing phase 3: start device plugin server (time since start: %s)", time.Since(starttime))
+	log.Entry(ctx).Infof("executing phase 3: init pools (time since start: %s)", time.Since(starttime))
 	// ********************************************************************************
-	// Create SR-IOV resource token pool
+
 	tokenPool := token.NewPool(sriovConfig)
+
+	pciPool, err := pci.NewPool(config.PCIDevicesPath, config.PCIDriversPath, config.VFIOPath, sriovConfig)
+	if err != nil {
+		log.Entry(ctx).Fatalf("failed to init PCI pool: %+v", err)
+	}
+
+	resourcePool := resource.NewPool(tokenPool, sriovConfig)
+
+	// ********************************************************************************
+	log.Entry(ctx).Infof("executing phase 4: start device plugin server (time since start: %s)", time.Since(starttime))
+	// ********************************************************************************
 
 	// Start device plugin server
 	manager := k8s.NewManager(config.DevicePluginPath, config.PodResourcesPath)
@@ -155,7 +164,7 @@ func main() {
 	}
 
 	// ********************************************************************************
-	log.Entry(ctx).Infof("executing phase 4: retrieving svid, check spire agent logs if this is the last line you see (time since start: %s)", time.Since(starttime))
+	log.Entry(ctx).Infof("executing phase 5: retrieving svid, check spire agent logs if this is the last line you see (time since start: %s)", time.Since(starttime))
 	// ********************************************************************************
 	source, err := workloadapi.NewX509Source(ctx)
 	if err != nil {
@@ -168,17 +177,16 @@ func main() {
 	log.Entry(ctx).Infof("SVID: %q", svid.ID)
 
 	// ********************************************************************************
-	log.Entry(ctx).Infof("executing phase 5: create sriovns network service endpoint (time since start: %s)", time.Since(starttime))
+	log.Entry(ctx).Infof("executing phase 6: create sriovns network service endpoint (time since start: %s)", time.Since(starttime))
 	// ********************************************************************************
 	endpoint := sriovns.NewServer(
 		ctx,
 		config.Name,
 		authorize.NewServer(),
 		spiffejwt.TokenGeneratorFunc(source, config.MaxTokenLifetime),
-		tokenPool,
+		pciPool,
+		resourcePool,
 		sriovConfig,
-		functions,
-		binders,
 		config.VFIOPath, config.CgroupPath,
 		&config.ConnectTo,
 		grpc.WithTransportCredentials(
@@ -190,7 +198,7 @@ func main() {
 	)
 
 	// ********************************************************************************
-	log.Entry(ctx).Infof("executing phase 6: create grpc server and register sriovns (time since start: %s)", time.Since(starttime))
+	log.Entry(ctx).Infof("executing phase 7: create grpc server and register sriovns (time since start: %s)", time.Since(starttime))
 	// ********************************************************************************
 	tmpDir, err := ioutil.TempDir("", "sriov-forwarder")
 	if err != nil {
@@ -211,7 +219,7 @@ func main() {
 	exitOnErr(ctx, cancel, srvErrCh)
 
 	// ********************************************************************************
-	log.Entry(ctx).Infof("executing phase 7: register %s with the registry (time since start: %s)", config.NSName, time.Since(starttime))
+	log.Entry(ctx).Infof("executing phase 8: register %s with the registry (time since start: %s)", config.NSName, time.Since(starttime))
 	// ********************************************************************************
 	registryCreds := credentials.NewTLS(tlsconfig.MTLSClientConfig(source, source, tlsconfig.AuthorizeAny()))
 	registryCreds = grpcfd.TransportCredentials(registryCreds)
@@ -250,60 +258,6 @@ func main() {
 	log.Entry(ctx).Infof("Startup completed in %v", time.Since(starttime))
 
 	<-ctx.Done()
-}
-
-func initPCIFunctions(ctx context.Context, sriovConfigFile, pciDevicesPath, pciDriversPath string) (
-	sriovConfig *sriovconfig.Config,
-	functions map[sriov.PCIFunction][]sriov.PCIFunction,
-	binders map[uint][]sriov.DriverBinder,
-	err error,
-) {
-	sriovConfig, err = sriovconfig.ReadConfig(ctx, sriovConfigFile)
-	if err != nil {
-		log.Entry(ctx).Fatalf("failed to get PCI resources config: %+v", err)
-	}
-
-	functions = map[sriov.PCIFunction][]sriov.PCIFunction{}
-	binders = map[uint][]sriov.DriverBinder{}
-	for pfPCIAddr, pff := range sriovConfig.PhysicalFunctions {
-		pff.VirtualFunctions = map[string]uint{}
-
-		pf, err := pcifunction.NewPhysicalFunction(pfPCIAddr, pciDevicesPath, pciDriversPath)
-		if err != nil {
-			return nil, nil, nil, err
-		}
-		capacity, err := pf.GetVirtualFunctionsCapacity()
-		if err != nil {
-			return nil, nil, nil, err
-		}
-		err = pf.CreateVirtualFunctions(capacity)
-		if err != nil {
-			return nil, nil, nil, err
-		}
-		vfs, err := pf.GetVirtualFunctions()
-		if err != nil {
-			return nil, nil, nil, err
-		}
-
-		iommuGroup, err := pf.GetIOMMUGroup()
-		if err != nil {
-			return nil, nil, nil, err
-		}
-		binders[iommuGroup] = append(binders[iommuGroup], pf)
-
-		for _, vf := range vfs {
-			functions[pf] = append(functions[pf], vf)
-
-			iommuGroup, err := vf.GetIOMMUGroup()
-			if err != nil {
-				return nil, nil, nil, err
-			}
-			binders[iommuGroup] = append(binders[iommuGroup], vf)
-
-			pff.VirtualFunctions[vf.GetPCIAddress()] = iommuGroup
-		}
-	}
-	return sriovConfig, functions, binders, nil
 }
 
 func exitOnErr(ctx context.Context, cancel context.CancelFunc, errCh <-chan error) {

@@ -41,7 +41,6 @@ import (
 	"github.com/networkservicemesh/sdk-sriov/pkg/networkservice/common/resourcepool"
 	"github.com/networkservicemesh/sdk-sriov/pkg/networkservice/common/vfconfig"
 	"github.com/networkservicemesh/sdk-sriov/pkg/sriov"
-	"github.com/networkservicemesh/sdk-sriov/pkg/sriov/resource"
 	"github.com/networkservicemesh/sdk/pkg/networkservice/chains/client"
 	"github.com/networkservicemesh/sdk/pkg/networkservice/chains/endpoint"
 	"github.com/networkservicemesh/sdk/pkg/networkservice/common/clienturl"
@@ -65,10 +64,9 @@ type sriovServer struct {
 //             - name - name of the Forwarder
 //             - authzServer - policy for allowing or rejecting requests
 //             - tokenGenerator - token.GeneratorFunc - generates tokens for use in Path
-//             - tokenPool - provides SR-IOV resource tokens
+//             - pciPool - provides PCI functions
+//             - resourcePool - provides SR-IOV resources
 //             - sriovConfig - SR-IOV PCI functions config
-//             - functions - SR-IOV PCI functions (PF -> []VF)
-//             - binders - SR-IOV PCI driver binders (IOMMU group -> []PCI Function driver binder)
 //             - vfioDir - host /dev/vfio directory mount location
 //             - cgroupBaseDir - host /sys/fs/cgroup/devices directory mount location
 //             - clientUrl - *url.URL for the talking to the NSMgr
@@ -78,10 +76,9 @@ func NewServer(
 	name string,
 	authzServer networkservice.NetworkServiceServer,
 	tokenGenerator token.GeneratorFunc,
-	tokenPool resource.TokenPool,
+	pciPool resourcepool.PCIPool,
+	resourcePool resourcepool.ResourcePool,
 	sriovConfig *sriovconfig.Config,
-	functions map[sriov.PCIFunction][]sriov.PCIFunction,
-	binders map[uint][]sriov.DriverBinder,
 	vfioDir, cgroupBaseDir string,
 	clientURL *url.URL,
 	clientDialOptions ...grpc.DialOption,
@@ -105,10 +102,9 @@ func NewServer(
 	}
 
 	sriovChain := sriovChain(
-		tokenPool,
+		pciPool,
+		resourcePool,
 		sriovConfig,
-		functions,
-		binders,
 		vfioDir, cgroupBaseDir,
 		connectChainFactory,
 	)
@@ -129,10 +125,9 @@ func NewServer(
 }
 
 func sriovChain(
-	tokenPool resource.TokenPool,
+	pciPool resourcepool.PCIPool,
+	resourcePool resourcepool.ResourcePool,
 	sriovConfig *sriovconfig.Config,
-	functions map[sriov.PCIFunction][]sriov.PCIFunction,
-	binders map[uint][]sriov.DriverBinder,
 	vfioDir, cgroupBaseDir string,
 	connectChainFactory func(string) networkservice.NetworkServiceServer,
 ) networkservice.NetworkServiceServer {
@@ -140,16 +135,15 @@ func sriovChain(
 	return chain.NewNetworkServiceServer(
 		recvfd.NewServer(),
 		vfconfig.NewServer(),
-		resourcepool.NewInitServer(tokenPool, sriovConfig),
 		resetmechanism.NewServer(
 			mechanisms.NewServer(map[string]networkservice.NetworkServiceServer{
 				kernel.MECHANISM: chain.NewNetworkServiceServer(
-					resourcepool.NewServer(sriov.KernelDriver, resourceLock, functions, binders),
+					resourcepool.NewServer(sriov.KernelDriver, resourceLock, pciPool, resourcePool, sriovConfig),
 					rename.NewServer(),
 					inject.NewServer(),
 				),
 				vfiomech.MECHANISM: chain.NewNetworkServiceServer(
-					resourcepool.NewServer(sriov.VFIOPCIDriver, resourceLock, functions, binders),
+					resourcepool.NewServer(sriov.VFIOPCIDriver, resourceLock, pciPool, resourcePool, sriovConfig),
 					vfio.NewServer(vfioDir, cgroupBaseDir),
 				),
 			}),
