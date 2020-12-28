@@ -28,12 +28,7 @@ import (
 
 	nested "github.com/antonfisher/nested-logrus-formatter"
 	"github.com/edwarnicke/grpcfd"
-	"github.com/golang/protobuf/ptypes"
 	"github.com/kelseyhightower/envconfig"
-	"github.com/networkservicemesh/sdk-sriov/pkg/sriov/pci"
-	"github.com/networkservicemesh/sdk-sriov/pkg/sriov/resource"
-	"github.com/networkservicemesh/sdk/pkg/tools/jaeger"
-	"github.com/networkservicemesh/sdk/pkg/tools/spanhelper"
 	"github.com/sirupsen/logrus"
 	"github.com/spiffe/go-spiffe/v2/spiffetls/tlsconfig"
 	"github.com/spiffe/go-spiffe/v2/workloadapi"
@@ -41,20 +36,26 @@ import (
 	"google.golang.org/grpc/credentials"
 
 	registryapi "github.com/networkservicemesh/api/pkg/api/registry"
+	k8sdeviceplugin "github.com/networkservicemesh/sdk-k8s/pkg/deviceplugin"
+	k8spodresources "github.com/networkservicemesh/sdk-k8s/pkg/podresources"
+	"github.com/networkservicemesh/sdk-sriov/pkg/networkservice/chains/sriovns"
 	sriovconfig "github.com/networkservicemesh/sdk-sriov/pkg/sriov/config"
+	"github.com/networkservicemesh/sdk-sriov/pkg/sriov/pci"
+	"github.com/networkservicemesh/sdk-sriov/pkg/sriov/resource"
 	"github.com/networkservicemesh/sdk-sriov/pkg/sriov/token"
 	"github.com/networkservicemesh/sdk/pkg/networkservice/common/authorize"
+	"github.com/networkservicemesh/sdk/pkg/registry/common/refresh"
 	registrysendfd "github.com/networkservicemesh/sdk/pkg/registry/common/sendfd"
 	registrychain "github.com/networkservicemesh/sdk/pkg/registry/core/chain"
 	"github.com/networkservicemesh/sdk/pkg/tools/debug"
 	"github.com/networkservicemesh/sdk/pkg/tools/grpcutils"
+	"github.com/networkservicemesh/sdk/pkg/tools/jaeger"
 	"github.com/networkservicemesh/sdk/pkg/tools/log"
 	"github.com/networkservicemesh/sdk/pkg/tools/signalctx"
+	"github.com/networkservicemesh/sdk/pkg/tools/spanhelper"
 	"github.com/networkservicemesh/sdk/pkg/tools/spiffejwt"
 
-	"github.com/networkservicemesh/cmd-forwarder-sriov/internal/k8s"
-	"github.com/networkservicemesh/cmd-forwarder-sriov/internal/k8s/deviceplugin"
-	"github.com/networkservicemesh/cmd-forwarder-sriov/internal/networkservice/chains/sriovns"
+	"github.com/networkservicemesh/cmd-forwarder-sriov/internal/deviceplugin"
 )
 
 // Config - configuration for cmd-forwarder-sriov
@@ -158,8 +159,13 @@ func main() {
 	// ********************************************************************************
 
 	// Start device plugin server
-	manager := k8s.NewManager(config.DevicePluginPath, config.PodResourcesPath)
-	if err = deviceplugin.StartServers(ctx, tokenPool, config.ResourcePollTimeout, manager); err != nil {
+	if err = deviceplugin.StartServers(
+		ctx,
+		tokenPool,
+		config.ResourcePollTimeout,
+		k8sdeviceplugin.NewClient(config.DevicePluginPath),
+		k8spodresources.NewClient(config.PodResourcesPath),
+	); err != nil {
 		log.Entry(ctx).Fatalf("failed to start a device plugin server: %+v", err)
 	}
 
@@ -221,35 +227,35 @@ func main() {
 	// ********************************************************************************
 	log.Entry(ctx).Infof("executing phase 8: register %s with the registry (time since start: %s)", config.NSName, time.Since(starttime))
 	// ********************************************************************************
-	registryCreds := credentials.NewTLS(tlsconfig.MTLSClientConfig(source, source, tlsconfig.AuthorizeAny()))
-	registryCreds = grpcfd.TransportCredentials(registryCreds)
+	clientOptions := append(
+		spanhelper.WithTracingDial(),
+		grpc.WithBlock(),
+		grpc.WithDefaultCallOptions(grpc.WaitForReady(true)),
+		grpc.WithTransportCredentials(
+			grpcfd.TransportCredentials(
+				credentials.NewTLS(
+					tlsconfig.MTLSClientConfig(source, source, tlsconfig.AuthorizeAny()),
+				),
+			),
+		),
+	)
 	registryCC, err := grpc.DialContext(ctx,
 		grpcutils.URLToTarget(&config.ConnectTo),
-		append(
-			spanhelper.WithTracingDial(),
-			grpc.WithTransportCredentials(registryCreds),
-			grpc.WithBlock(),
-		)...,
+		clientOptions...,
 	)
 	if err != nil {
 		log.Entry(ctx).Fatalf("failed to connect to registry: %+v", err)
 	}
 
 	registryClient := registrychain.NewNetworkServiceEndpointRegistryClient(
-		// TODO - add refresh
+		refresh.NewNetworkServiceEndpointRegistryClient(),
 		registrysendfd.NewNetworkServiceEndpointRegistryClient(),
 		registryapi.NewNetworkServiceEndpointRegistryClient(registryCC),
 	)
-	// TODO - something smarter for expireTime
-	expireTime, err := ptypes.TimestampProto(time.Now().Add(config.MaxTokenLifetime))
-	if err != nil {
-		log.Entry(ctx).Fatalf("failed to connect to registry: %+v", err)
-	}
 	_, err = registryClient.Register(ctx, &registryapi.NetworkServiceEndpoint{
 		Name:                config.Name,
 		NetworkServiceNames: []string{config.NSName},
 		Url:                 grpcutils.URLToTarget(listenOn),
-		ExpirationTime:      expireTime,
 	})
 	if err != nil {
 		log.Entry(ctx).Fatalf("failed to connect to registry: %+v", err)

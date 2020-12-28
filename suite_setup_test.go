@@ -35,20 +35,19 @@ import (
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials"
 
-	"github.com/networkservicemesh/api/pkg/api/registry"
+	registryapi "github.com/networkservicemesh/api/pkg/api/registry"
+	"github.com/networkservicemesh/sdk-k8s/pkg/tools/k8stest/deviceplugin"
+	"github.com/networkservicemesh/sdk-k8s/pkg/tools/k8stest/podresources"
+	"github.com/networkservicemesh/sdk-k8s/pkg/tools/socketpath"
 	"github.com/networkservicemesh/sdk/pkg/registry/common/expire"
+	"github.com/networkservicemesh/sdk/pkg/registry/common/memory"
 	registryrecvfd "github.com/networkservicemesh/sdk/pkg/registry/common/recvfd"
 	"github.com/networkservicemesh/sdk/pkg/registry/common/setid"
 	"github.com/networkservicemesh/sdk/pkg/registry/core/adapters"
 	registrychain "github.com/networkservicemesh/sdk/pkg/registry/core/chain"
-	"github.com/networkservicemesh/sdk/pkg/registry/memory"
 	"github.com/networkservicemesh/sdk/pkg/tools/grpcutils"
 	"github.com/networkservicemesh/sdk/pkg/tools/log"
 	"github.com/networkservicemesh/sdk/pkg/tools/spire"
-
-	"github.com/networkservicemesh/cmd-forwarder-sriov/internal/k8s/k8stest/deviceplugin"
-	"github.com/networkservicemesh/cmd-forwarder-sriov/internal/k8s/k8stest/podresources"
-	"github.com/networkservicemesh/cmd-forwarder-sriov/internal/tools/socketpath"
 )
 
 const (
@@ -127,7 +126,7 @@ func (f *ForwarderTestSuite) SetupSuite() {
 	memrg := memory.NewNetworkServiceEndpointRegistryServer()
 	registryServer := registrychain.NewNetworkServiceEndpointRegistryServer(
 		setid.NewNetworkServiceEndpointRegistryServer(),
-		expire.NewNetworkServiceEndpointRegistryServer(),
+		expire.NewNetworkServiceEndpointRegistryServer(24*time.Hour),
 		registryrecvfd.NewNetworkServiceEndpointRegistryServer(),
 		memrg,
 	)
@@ -139,7 +138,7 @@ func (f *ForwarderTestSuite) SetupSuite() {
 	serverCreds = grpcfd.TransportCredentials(serverCreds)
 	server := grpc.NewServer(grpc.Creds(serverCreds))
 
-	registry.RegisterNetworkServiceEndpointRegistryServer(server, registryServer)
+	registryapi.RegisterNetworkServiceEndpointRegistryServer(server, registryServer)
 	ctx, cancel := context.WithCancel(f.ctx)
 	defer func(cancel context.CancelFunc, serverErrCh <-chan error) {
 		cancel()
@@ -147,8 +146,8 @@ func (f *ForwarderTestSuite) SetupSuite() {
 		f.Require().NoError(err)
 	}(cancel, f.ListenAndServe(ctx, server))
 
-	recv, err := adapters.NetworkServiceEndpointServerToClient(memrg).Find(ctx, &registry.NetworkServiceEndpointQuery{
-		NetworkServiceEndpoint: &registry.NetworkServiceEndpoint{
+	recv, err := adapters.NetworkServiceEndpointServerToClient(memrg).Find(ctx, &registryapi.NetworkServiceEndpointQuery{
+		NetworkServiceEndpoint: &registryapi.NetworkServiceEndpoint{
 			NetworkServiceNames: []string{f.config.NSName},
 		},
 		Watch: true,

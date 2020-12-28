@@ -14,6 +14,8 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+//+build !windows
+
 // Package deviceplugin provides tools for setting up device plugin server
 package deviceplugin
 
@@ -22,10 +24,13 @@ import (
 	"sync"
 	"time"
 
+	pluginapi "k8s.io/kubelet/pkg/apis/deviceplugin/v1beta1"
+	podresourcesapi "k8s.io/kubelet/pkg/apis/podresources/v1alpha1"
+
+	"github.com/networkservicemesh/sdk-k8s/pkg/deviceplugin"
+	"github.com/networkservicemesh/sdk-k8s/pkg/podresources"
 	"github.com/networkservicemesh/sdk-sriov/pkg/tools/tokens"
 	"github.com/networkservicemesh/sdk/pkg/tools/log"
-	pluginapi "k8s.io/kubelet/pkg/apis/deviceplugin/v1beta1"
-	podresources "k8s.io/kubelet/pkg/apis/podresources/v1alpha1"
 )
 
 // TokenPool is a token.Pool interface
@@ -35,14 +40,6 @@ type TokenPool interface {
 	Tokens() map[string]map[string]bool
 	Allocate(id string) error
 	Free(id string) error
-}
-
-// K8sManager is a bridge interface to the k8s API
-type K8sManager interface {
-	StartDeviceServer(ctx context.Context, deviceServer pluginapi.DevicePluginServer) (string, error)
-	RegisterDeviceServer(ctx context.Context, request *pluginapi.RegisterRequest) error
-	MonitorKubeletRestart(ctx context.Context) (chan bool, error)
-	GetPodResourcesListerClient(ctx context.Context) (podresources.PodResourcesListerClient, error)
 }
 
 var _ pluginapi.DevicePluginServer = (*devicePluginServer)(nil)
@@ -55,7 +52,7 @@ type devicePluginServer struct {
 	resourcePollTimeout  time.Duration
 	updateCh             chan struct{}
 	allocatedTokens      map[string]bool
-	resourceListerClient podresources.PodResourcesListerClient
+	resourceListerClient podresourcesapi.PodResourcesListerClient
 }
 
 // StartServers creates new SR-IOV forwarder device plugin servers and starts them
@@ -63,18 +60,19 @@ func StartServers(
 	ctx context.Context,
 	tokenPool TokenPool,
 	resourcePollTimeout time.Duration,
-	manager K8sManager,
+	devicePluginClient *deviceplugin.Client,
+	podResourcesClient *podresources.Client,
 ) error {
 	logEntry := log.Entry(ctx).WithField("devicePluginServer", "StartServers")
 
 	logEntry.Info("get resource lister client")
-	resourceListerClient, err := manager.GetPodResourcesListerClient(ctx)
+	resourceListerClient, err := podResourcesClient.GetPodResourcesListerClient(ctx)
 	if err != nil {
 		logEntry.Error("failed to get resource lister client")
 		return err
 	}
 
-	resp, err := resourceListerClient.List(ctx, new(podresources.ListPodResourcesRequest))
+	resp, err := resourceListerClient.List(ctx, new(podresourcesapi.ListPodResourcesRequest))
 	if err != nil {
 		logEntry.Errorf("resourceListerClient unavailable: %+v", err)
 		return err
@@ -95,14 +93,14 @@ func StartServers(
 		tokenPool.AddListener(s.update)
 
 		logEntry.Infof("starting server: %v", name)
-		socket, err := manager.StartDeviceServer(s.ctx, s)
+		socket, err := devicePluginClient.StartDeviceServer(s.ctx, s)
 		if err != nil {
 			logEntry.Errorf("error starting server: %v", name)
 			return err
 		}
 
 		logEntry.Infof("registering server: %s", name)
-		if err := manager.RegisterDeviceServer(s.ctx, &pluginapi.RegisterRequest{
+		if err := devicePluginClient.RegisterDeviceServer(s.ctx, &pluginapi.RegisterRequest{
 			Version:      pluginapi.Version,
 			Endpoint:     socket,
 			ResourceName: name,
@@ -111,14 +109,14 @@ func StartServers(
 			return err
 		}
 
-		if err := s.monitorKubeletRestart(manager, socket); err != nil {
+		if err := s.monitorKubeletRestart(devicePluginClient, socket); err != nil {
 			logEntry.Warnf("error monitoring kubelet restart: %s %+v", name, err)
 		}
 	}
 	return nil
 }
 
-func respToDeviceIDs(resp *podresources.ListPodResourcesResponse) map[string][]string {
+func respToDeviceIDs(resp *podresourcesapi.ListPodResourcesResponse) map[string][]string {
 	deviceIDs := map[string][]string{}
 	for _, pod := range resp.PodResources {
 		for _, container := range pod.Containers {
@@ -137,10 +135,10 @@ func (s *devicePluginServer) update() {
 	}
 }
 
-func (s *devicePluginServer) monitorKubeletRestart(manager K8sManager, socket string) error {
+func (s *devicePluginServer) monitorKubeletRestart(devicePluginClient *deviceplugin.Client, socket string) error {
 	logEntry := log.Entry(s.ctx).WithField("devicePluginServer", "monitorKubeletRestart")
 
-	resetCh, err := manager.MonitorKubeletRestart(s.ctx)
+	resetCh, err := devicePluginClient.MonitorKubeletRestart(s.ctx)
 	if err != nil {
 		return err
 	}
@@ -157,12 +155,12 @@ func (s *devicePluginServer) monitorKubeletRestart(manager K8sManager, socket st
 					return
 				}
 				logEntry.Infof("re registering server: %s", s.name)
-				if err = manager.RegisterDeviceServer(s.ctx, &pluginapi.RegisterRequest{
+				if err = devicePluginClient.RegisterDeviceServer(s.ctx, &pluginapi.RegisterRequest{
 					Version:      pluginapi.Version,
 					Endpoint:     socket,
 					ResourceName: s.name,
 				}); err != nil {
-					logEntry.Errorf("error re registering server: %s %+v", s.name, err)
+					logEntry.Fatalf("error re registering server: %s %+v", s.name, err)
 					return
 				}
 			}
@@ -180,7 +178,7 @@ func (s *devicePluginServer) ListAndWatch(_ *pluginapi.Empty, server pluginapi.D
 	logEntry := log.Entry(s.ctx).WithField("devicePluginServer", "ListAndWatch")
 
 	for {
-		resp, err := s.resourceListerClient.List(s.ctx, new(podresources.ListPodResourcesRequest))
+		resp, err := s.resourceListerClient.List(s.ctx, new(podresourcesapi.ListPodResourcesRequest))
 		if err != nil {
 			logEntry.Errorf("resourceListerClient unavailable: %+v", err)
 			return err
@@ -203,7 +201,7 @@ func (s *devicePluginServer) ListAndWatch(_ *pluginapi.Empty, server pluginapi.D
 	}
 }
 
-func (s *devicePluginServer) respToDeviceIDs(resp *podresources.ListPodResourcesResponse) map[string]struct{} {
+func (s *devicePluginServer) respToDeviceIDs(resp *podresourcesapi.ListPodResourcesResponse) map[string]struct{} {
 	deviceIDs := map[string]struct{}{}
 	for _, pod := range resp.PodResources {
 		for _, container := range pod.Containers {
