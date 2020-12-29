@@ -44,6 +44,7 @@ import (
 	"github.com/networkservicemesh/sdk-sriov/pkg/sriov/resource"
 	"github.com/networkservicemesh/sdk-sriov/pkg/sriov/token"
 	"github.com/networkservicemesh/sdk/pkg/networkservice/common/authorize"
+	"github.com/networkservicemesh/sdk/pkg/registry/common/interpose"
 	"github.com/networkservicemesh/sdk/pkg/registry/common/refresh"
 	registrysendfd "github.com/networkservicemesh/sdk/pkg/registry/common/sendfd"
 	registrychain "github.com/networkservicemesh/sdk/pkg/registry/core/chain"
@@ -60,7 +61,7 @@ import (
 
 // Config - configuration for cmd-forwarder-sriov
 type Config struct {
-	Name                string        `default:"interpose-nse#sriov-forwarder" desc:"Name of Endpoint"`
+	Name                string        `default:"sriov-forwarder" desc:"Name of Endpoint"`
 	NSName              string        `default:"sriovns" desc:"Name of Network Service to Register with Registry"`
 	ConnectTo           url.URL       `default:"unix:///connect.to.socket" desc:"url to connect to" split_words:"true"`
 	MaxTokenLifetime    time.Duration `default:"24h" desc:"maximum lifetime of tokens" split_words:"true"`
@@ -249,6 +250,7 @@ func main() {
 
 	registryClient := registrychain.NewNetworkServiceEndpointRegistryClient(
 		refresh.NewNetworkServiceEndpointRegistryClient(),
+		interpose.NewNetworkServiceEndpointRegistryClient(),
 		registrysendfd.NewNetworkServiceEndpointRegistryClient(),
 		registryapi.NewNetworkServiceEndpointRegistryClient(registryCC),
 	)
