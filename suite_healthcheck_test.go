@@ -1,4 +1,5 @@
 // Copyright (c) 2020 Doc.ai and/or its affiliates.
+// Copyright (c) 2020 Cisco and/or its affiliates.
 //
 // SPDX-License-Identifier: Apache-2.0
 //
@@ -14,23 +15,32 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-// Package podresources provides pod resources GRPC API stubs for testing
-package podresources
+package main_test
 
 import (
 	"context"
+	"time"
 
 	"google.golang.org/grpc"
-	podresources "k8s.io/kubernetes/pkg/kubelet/apis/podresources/v1alpha1"
+	"google.golang.org/grpc/health/grpc_health_v1"
 )
 
-type podResourcesListerServer struct{}
+const (
+	contextTimeout = 20 * time.Second
+)
 
-// StartPodResourcesListerServer creates a new podResourcesListServer and registers it on given GRPC server
-func StartPodResourcesListerServer(server *grpc.Server) {
-	podresources.RegisterPodResourcesListerServer(server, &podResourcesListerServer{})
-}
+func (f *ForwarderTestSuite) TestHealthCheck() {
+	ctx, cancel := context.WithTimeout(f.ctx, contextTimeout)
+	defer cancel()
 
-func (prls *podResourcesListerServer) List(_ context.Context, _ *podresources.ListPodResourcesRequest) (*podresources.ListPodResourcesResponse, error) {
-	return &podresources.ListPodResourcesResponse{}, nil
+	healthClient := grpc_health_v1.NewHealthClient(f.sutCC)
+	healthResponse, err := healthClient.Check(ctx,
+		&grpc_health_v1.HealthCheckRequest{
+			Service: "networkservice.NetworkService",
+		},
+		grpc.WaitForReady(true),
+	)
+	f.NoError(err)
+	f.Require().NotNil(healthResponse)
+	f.Equal(grpc_health_v1.HealthCheckResponse_SERVING, healthResponse.Status)
 }

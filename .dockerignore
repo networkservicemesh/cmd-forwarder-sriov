@@ -1,0 +1,6 @@
+*
+!*.go
+!internal/
+!go.*
+!local/
+**/.git

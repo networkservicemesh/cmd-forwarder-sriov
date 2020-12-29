@@ -1,4 +1,4 @@
-// Copyright (c) 2020 Doc.ai and/or its affiliates.
+// Copyright (c) 2020 Cisco and/or its affiliates.
 //
 // SPDX-License-Identifier: Apache-2.0
 //
@@ -14,23 +14,8 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-package tools
+package imports
 
-import "github.com/fsnotify/fsnotify"
-
-// WatchOn creates a FS watcher on given ...paths
-func WatchOn(paths ...string) (*fsnotify.Watcher, error) {
-	watcher, err := fsnotify.NewWatcher()
-	if err != nil {
-		return nil, err
-	}
-
-	for _, path := range paths {
-		if err := watcher.Add(path); err != nil {
-			_ = watcher.Close()
-			return nil, err
-		}
-	}
-
-	return watcher, nil
-}
+//go:generate bash -c "rm -f imports.go"
+//go:generate bash -c "cd $(mktemp -d) && GO111MODULE=on go get github.com/edwarnicke/imports-gen@v1.0.0"
+//go:generate ${GOPATH}/bin/imports-gen
