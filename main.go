@@ -1,4 +1,4 @@
-// Copyright (c) 2020 Doc.ai and/or its affiliates.
+// Copyright (c) 2020-2021 Doc.ai and/or its affiliates.
 //
 // SPDX-License-Identifier: Apache-2.0
 //
@@ -36,8 +36,8 @@ import (
 	"google.golang.org/grpc/credentials"
 
 	registryapi "github.com/networkservicemesh/api/pkg/api/registry"
-	k8sdeviceplugin "github.com/networkservicemesh/sdk-k8s/pkg/deviceplugin"
-	k8spodresources "github.com/networkservicemesh/sdk-k8s/pkg/podresources"
+	k8sdeviceplugin "github.com/networkservicemesh/sdk-k8s/pkg/tools/deviceplugin"
+	k8spodresources "github.com/networkservicemesh/sdk-k8s/pkg/tools/podresources"
 	"github.com/networkservicemesh/sdk-sriov/pkg/networkservice/chains/sriovns"
 	sriovconfig "github.com/networkservicemesh/sdk-sriov/pkg/sriov/config"
 	"github.com/networkservicemesh/sdk-sriov/pkg/sriov/pci"

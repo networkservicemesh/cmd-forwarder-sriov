@@ -1,4 +1,4 @@
-// Copyright (c) 2020 Doc.ai and/or its affiliates.
+// Copyright (c) 2020-2021 Doc.ai and/or its affiliates.
 //
 // SPDX-License-Identifier: Apache-2.0
 //
@@ -27,8 +27,8 @@ import (
 	pluginapi "k8s.io/kubelet/pkg/apis/deviceplugin/v1beta1"
 	podresourcesapi "k8s.io/kubelet/pkg/apis/podresources/v1alpha1"
 
-	"github.com/networkservicemesh/sdk-k8s/pkg/deviceplugin"
-	"github.com/networkservicemesh/sdk-k8s/pkg/podresources"
+	"github.com/networkservicemesh/sdk-k8s/pkg/tools/deviceplugin"
+	"github.com/networkservicemesh/sdk-k8s/pkg/tools/podresources"
 	"github.com/networkservicemesh/sdk-sriov/pkg/tools/tokens"
 	"github.com/networkservicemesh/sdk/pkg/tools/log"
 )
