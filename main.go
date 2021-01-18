@@ -61,9 +61,9 @@ import (
 
 // Config - configuration for cmd-forwarder-sriov
 type Config struct {
-	Name                string        `default:"sriov-forwarder" desc:"Name of Endpoint"`
+	Name                string        `default:"sriov-forwarder" desc:"name of Endpoint"`
 	NSName              string        `default:"sriovns" desc:"Name of Network Service to Register with Registry"`
-	ConnectTo           url.URL       `default:"unix:///connect.to.socket" desc:"url to connect to" split_words:"true"`
+	ConnectTo           url.URL       `default:"unix:///var/lib/networkservicemesh/nsm.io.sock" desc:"URL to connect to" split_words:"true"`
 	MaxTokenLifetime    time.Duration `default:"24h" desc:"maximum lifetime of tokens" split_words:"true"`
 	ResourcePollTimeout time.Duration `default:"30s" desc:"device plugin polling timeout" split_words:"true"`
 	DevicePluginPath    string        `default:"/var/lib/kubelet/device-plugins/" desc:"path to the device plugin directory" split_words:"true"`
