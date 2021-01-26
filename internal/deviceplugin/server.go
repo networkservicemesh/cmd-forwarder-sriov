@@ -30,7 +30,7 @@ import (
 	"github.com/networkservicemesh/sdk-k8s/pkg/tools/deviceplugin"
 	"github.com/networkservicemesh/sdk-k8s/pkg/tools/podresources"
 	"github.com/networkservicemesh/sdk-sriov/pkg/tools/tokens"
-	"github.com/networkservicemesh/sdk/pkg/tools/log"
+	"github.com/networkservicemesh/sdk/pkg/tools/logger"
 )
 
 // TokenPool is a token.Pool interface
@@ -63,7 +63,7 @@ func StartServers(
 	devicePluginClient *deviceplugin.Client,
 	podResourcesClient *podresources.Client,
 ) error {
-	logEntry := log.Entry(ctx).WithField("devicePluginServer", "StartServers")
+	logEntry := logger.Log(ctx).WithField("devicePluginServer", "StartServers")
 
 	logEntry.Info("get resource lister client")
 	resourceListerClient, err := podResourcesClient.GetPodResourcesListerClient(ctx)
@@ -136,7 +136,7 @@ func (s *devicePluginServer) update() {
 }
 
 func (s *devicePluginServer) monitorKubeletRestart(devicePluginClient *deviceplugin.Client, socket string) error {
-	logEntry := log.Entry(s.ctx).WithField("devicePluginServer", "monitorKubeletRestart")
+	logEntry := logger.Log(s.ctx).WithField("devicePluginServer", "monitorKubeletRestart")
 
 	resetCh, err := devicePluginClient.MonitorKubeletRestart(s.ctx)
 	if err != nil {
@@ -175,7 +175,7 @@ func (s *devicePluginServer) GetDevicePluginOptions(_ context.Context, _ *plugin
 }
 
 func (s *devicePluginServer) ListAndWatch(_ *pluginapi.Empty, server pluginapi.DevicePlugin_ListAndWatchServer) error {
-	logEntry := log.Entry(s.ctx).WithField("devicePluginServer", "ListAndWatch")
+	logEntry := logger.Log(s.ctx).WithField("devicePluginServer", "ListAndWatch")
 
 	for {
 		resp, err := s.resourceListerClient.List(s.ctx, new(podresourcesapi.ListPodResourcesRequest))
