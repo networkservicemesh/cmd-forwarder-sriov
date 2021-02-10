@@ -30,7 +30,7 @@ import (
 	"github.com/networkservicemesh/sdk-k8s/pkg/tools/deviceplugin"
 	"github.com/networkservicemesh/sdk-k8s/pkg/tools/podresources"
 	"github.com/networkservicemesh/sdk-sriov/pkg/tools/tokens"
-	"github.com/networkservicemesh/sdk/pkg/tools/logger"
+	"github.com/networkservicemesh/sdk/pkg/tools/log"
 )
 
 // TokenPool is a token.Pool interface
@@ -63,18 +63,18 @@ func StartServers(
 	devicePluginClient *deviceplugin.Client,
 	podResourcesClient *podresources.Client,
 ) error {
-	logEntry := logger.Log(ctx).WithField("devicePluginServer", "StartServers")
+	logger := log.FromContext(ctx).WithField("devicePluginServer", "StartServers")
 
-	logEntry.Info("get resource lister client")
+	logger.Info("get resource lister client")
 	resourceListerClient, err := podResourcesClient.GetPodResourcesListerClient(ctx)
 	if err != nil {
-		logEntry.Error("failed to get resource lister client")
+		logger.Error("failed to get resource lister client")
 		return err
 	}
 
 	resp, err := resourceListerClient.List(ctx, new(podresourcesapi.ListPodResourcesRequest))
 	if err != nil {
-		logEntry.Errorf("resourceListerClient unavailable: %+v", err)
+		logger.Errorf("resourceListerClient unavailable: %+v", err)
 		return err
 	}
 	_ = tokenPool.Restore(respToDeviceIDs(resp))
@@ -92,25 +92,25 @@ func StartServers(
 
 		tokenPool.AddListener(s.update)
 
-		logEntry.Infof("starting server: %v", name)
+		logger.Infof("starting server: %v", name)
 		socket, err := devicePluginClient.StartDeviceServer(s.ctx, s)
 		if err != nil {
-			logEntry.Errorf("error starting server: %v", name)
+			logger.Errorf("error starting server: %v", name)
 			return err
 		}
 
-		logEntry.Infof("registering server: %s", name)
+		logger.Infof("registering server: %s", name)
 		if err := devicePluginClient.RegisterDeviceServer(s.ctx, &pluginapi.RegisterRequest{
 			Version:      pluginapi.Version,
 			Endpoint:     socket,
 			ResourceName: name,
 		}); err != nil {
-			logEntry.Errorf("error registering server: %s", name)
+			logger.Errorf("error registering server: %s", name)
 			return err
 		}
 
 		if err := s.monitorKubeletRestart(devicePluginClient, socket); err != nil {
-			logEntry.Warnf("error monitoring kubelet restart: %s %+v", name, err)
+			logger.Warnf("error monitoring kubelet restart: %s %+v", name, err)
 		}
 	}
 	return nil
@@ -136,7 +136,7 @@ func (s *devicePluginServer) update() {
 }
 
 func (s *devicePluginServer) monitorKubeletRestart(devicePluginClient *deviceplugin.Client, socket string) error {
-	logEntry := logger.Log(s.ctx).WithField("devicePluginServer", "monitorKubeletRestart")
+	logger := log.FromContext(s.ctx).WithField("devicePluginServer", "monitorKubeletRestart")
 
 	resetCh, err := devicePluginClient.MonitorKubeletRestart(s.ctx)
 	if err != nil {
@@ -144,8 +144,8 @@ func (s *devicePluginServer) monitorKubeletRestart(devicePluginClient *deviceplu
 	}
 
 	go func() {
-		logEntry.Infof("start monitoring kubelet restart: %s", s.name)
-		defer logEntry.Infof("stop monitoring kubelet restart: %s", s.name)
+		logger.Infof("start monitoring kubelet restart: %s", s.name)
+		defer logger.Infof("stop monitoring kubelet restart: %s", s.name)
 		for {
 			select {
 			case <-s.ctx.Done():
@@ -154,13 +154,13 @@ func (s *devicePluginServer) monitorKubeletRestart(devicePluginClient *deviceplu
 				if !ok {
 					return
 				}
-				logEntry.Infof("re registering server: %s", s.name)
+				logger.Infof("re registering server: %s", s.name)
 				if err = devicePluginClient.RegisterDeviceServer(s.ctx, &pluginapi.RegisterRequest{
 					Version:      pluginapi.Version,
 					Endpoint:     socket,
 					ResourceName: s.name,
 				}); err != nil {
-					logEntry.Fatalf("error re registering server: %s %+v", s.name, err)
+					logger.Fatalf("error re registering server: %s %+v", s.name, err)
 					return
 				}
 			}
@@ -175,25 +175,25 @@ func (s *devicePluginServer) GetDevicePluginOptions(_ context.Context, _ *plugin
 }
 
 func (s *devicePluginServer) ListAndWatch(_ *pluginapi.Empty, server pluginapi.DevicePlugin_ListAndWatchServer) error {
-	logEntry := logger.Log(s.ctx).WithField("devicePluginServer", "ListAndWatch")
+	logger := log.FromContext(s.ctx).WithField("devicePluginServer", "ListAndWatch")
 
 	for {
 		resp, err := s.resourceListerClient.List(s.ctx, new(podresourcesapi.ListPodResourcesRequest))
 		if err != nil {
-			logEntry.Errorf("resourceListerClient unavailable: %+v", err)
+			logger.Errorf("resourceListerClient unavailable: %+v", err)
 			return err
 		}
 
 		s.updateDevices(s.respToDeviceIDs(resp))
 
 		if err := server.Send(s.listAndWatchResponse()); err != nil {
-			logEntry.Errorf("server unavailable: %+v", err)
+			logger.Errorf("server unavailable: %+v", err)
 			return err
 		}
 
 		select {
 		case <-s.ctx.Done():
-			logEntry.Info("server stopped")
+			logger.Info("server stopped")
 			return s.ctx.Err()
 		case <-time.After(s.resourcePollTimeout):
 		case <-s.updateCh:

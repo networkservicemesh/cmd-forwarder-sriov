@@ -51,8 +51,8 @@ import (
 	"github.com/networkservicemesh/sdk/pkg/tools/debug"
 	"github.com/networkservicemesh/sdk/pkg/tools/grpcutils"
 	"github.com/networkservicemesh/sdk/pkg/tools/jaeger"
-	"github.com/networkservicemesh/sdk/pkg/tools/logger"
-	"github.com/networkservicemesh/sdk/pkg/tools/logger/logruslogger"
+	"github.com/networkservicemesh/sdk/pkg/tools/log"
+	"github.com/networkservicemesh/sdk/pkg/tools/log/logruslogger"
 	"github.com/networkservicemesh/sdk/pkg/tools/opentracing"
 	"github.com/networkservicemesh/sdk/pkg/tools/signalctx"
 	"github.com/networkservicemesh/sdk/pkg/tools/spiffejwt"
@@ -87,79 +87,78 @@ func main() {
 	// setup logging
 	// ********************************************************************************
 	logrus.SetFormatter(&nested.Formatter{})
-	ctx, _ = logruslogger.New(
-		logger.WithFields(ctx, map[string]interface{}{"cmd": os.Args[0]}),
-	)
+	ctx = log.WithFields(ctx, map[string]interface{}{"cmd": os.Args[0]})
+	ctx = log.WithLog(ctx, logruslogger.New(ctx))
 
 	// ********************************************************************************
 	// Configure open tracing
 	// ********************************************************************************
-	logger.EnableTracing(true)
-	jaegerCloser := jaeger.InitJaeger("cmd-forwarder-sriov")
+	log.EnableTracing(true)
+	jaegerCloser := jaeger.InitJaeger(ctx, "cmd-forwarder-sriov")
 	defer func() { _ = jaegerCloser.Close() }()
 
 	// ********************************************************************************
 	// Debug self if necessary
 	// ********************************************************************************
 	if err := debug.Self(); err != nil {
-		logger.Log(ctx).Infof("%s", err)
+		log.FromContext(ctx).Infof("%s", err)
 	}
 
 	starttime := time.Now()
 
 	// enumerating phases
-	logger.Log(ctx).Infof("there are 8 phases which will be executed followed by a success message:")
-	logger.Log(ctx).Infof("the phases include:")
-	logger.Log(ctx).Infof("1: get config from environment")
-	logger.Log(ctx).Infof("2: get SR-IOV config from file")
-	logger.Log(ctx).Infof("3: init pools")
-	logger.Log(ctx).Infof("4: start device plugin server")
-	logger.Log(ctx).Infof("5: retrieve spiffe svid")
-	logger.Log(ctx).Infof("6: create sriovns network service endpoint")
-	logger.Log(ctx).Infof("7: create grpc server and register sriovns")
-	logger.Log(ctx).Infof("8: register xconnectns with the registry")
-	logger.Log(ctx).Infof("a final success message with start time duration")
+	log.FromContext(ctx).Infof("there are 8 phases which will be executed followed by a success message:")
+	log.FromContext(ctx).Infof("the phases include:")
+	log.FromContext(ctx).Infof("1: get config from environment")
+	log.FromContext(ctx).Infof("2: get SR-IOV config from file")
+	log.FromContext(ctx).Infof("3: init pools")
+	log.FromContext(ctx).Infof("4: start device plugin server")
+	log.FromContext(ctx).Infof("5: retrieve spiffe svid")
+	log.FromContext(ctx).Infof("6: create sriovns network service endpoint")
+	log.FromContext(ctx).Infof("7: create grpc server and register sriovns")
+	log.FromContext(ctx).Infof("8: register xconnectns with the registry")
+	log.FromContext(ctx).Infof("a final success message with start time duration")
 
 	// ********************************************************************************
-	logger.Log(ctx).Infof("executing phase 1: get config from environment (time since start: %s)", time.Since(starttime))
+	log.FromContext(ctx).Infof("executing phase 1: get config from environment (time since start: %s)", time.Since(starttime))
 	// ********************************************************************************
 	config := &Config{}
 	if err := envconfig.Usage("nsm", config); err != nil {
-		logger.Log(ctx).Fatal(err)
+		log.FromContext(ctx).Fatal(err)
 	}
 	if err := envconfig.Process("nsm", config); err != nil {
-		logger.Log(ctx).Fatalf("error processing config from env: %+v", err)
+		log.FromContext(ctx).Fatalf("error processing config from env: %+v", err)
 	}
 
-	logger.Log(ctx).Infof("Config: %#v", config)
+	log.FromContext(ctx).Infof("Config: %#v", config)
 
 	// ********************************************************************************
-	logger.Log(ctx).Infof("executing phase 2: get SR-IOV config from file (time since start: %s)", time.Since(starttime))
+	log.FromContext(ctx).Infof("executing phase 2: get SR-IOV config from file (time since start: %s)", time.Since(starttime))
 	// ********************************************************************************
 	sriovConfig, err := sriovconfig.ReadConfig(ctx, config.SRIOVConfigFile)
 	if err != nil {
-		logger.Log(ctx).Fatalf("failed to get PCI resources config: %+v", err)
+		log.FromContext(ctx).Fatalf("failed to get PCI resources config: %+v", err)
 	}
 
 	if err = pci.UpdateConfig(config.PCIDevicesPath, config.PCIDriversPath, sriovConfig); err != nil {
-		logger.Log(ctx).Fatalf("failed to update PCI resources config with VFs: %+v", err)
+		log.FromContext(ctx).Fatalf("failed to update PCI resources config with VFs: %+v", err)
 	}
 
 	// ********************************************************************************
-	logger.Log(ctx).Infof("executing phase 3: init pools (time since start: %s)", time.Since(starttime))
+	log.FromContext(ctx).Infof("executing phase 3: init pools (time since start: %s)", time.Since(starttime))
 	// ********************************************************************************
 
 	tokenPool := token.NewPool(sriovConfig)
 
 	pciPool, err := pci.NewPool(config.PCIDevicesPath, config.PCIDriversPath, config.VFIOPath, sriovConfig)
 	if err != nil {
-		logger.Log(ctx).Fatalf("failed to init PCI pool: %+v", err)
+		log.FromContext(ctx).Fatalf("failed to init PCI pool: %+v", err)
 	}
 
 	resourcePool := resource.NewPool(tokenPool, sriovConfig)
 
 	// ********************************************************************************
-	logger.Log(ctx).Infof("executing phase 4: start device plugin server (time since start: %s)", time.Since(starttime))
+	log.FromContext(ctx).Infof("executing phase 4: start device plugin server (time since start: %s)", time.Since(starttime))
 	// ********************************************************************************
 
 	// Start device plugin server
@@ -170,24 +169,24 @@ func main() {
 		k8sdeviceplugin.NewClient(config.DevicePluginPath),
 		k8spodresources.NewClient(config.PodResourcesPath),
 	); err != nil {
-		logger.Log(ctx).Fatalf("failed to start a device plugin server: %+v", err)
+		log.FromContext(ctx).Fatalf("failed to start a device plugin server: %+v", err)
 	}
 
 	// ********************************************************************************
-	logger.Log(ctx).Infof("executing phase 5: retrieving svid, check spire agent logs if this is the last line you see (time since start: %s)", time.Since(starttime))
+	log.FromContext(ctx).Infof("executing phase 5: retrieving svid, check spire agent logs if this is the last line you see (time since start: %s)", time.Since(starttime))
 	// ********************************************************************************
 	source, err := workloadapi.NewX509Source(ctx)
 	if err != nil {
-		logger.Log(ctx).Fatalf("error getting x509 source: %+v", err)
+		log.FromContext(ctx).Fatalf("error getting x509 source: %+v", err)
 	}
 	svid, err := source.GetX509SVID()
 	if err != nil {
-		logger.Log(ctx).Fatalf("error getting x509 svid: %+v", err)
+		log.FromContext(ctx).Fatalf("error getting x509 svid: %+v", err)
 	}
-	logger.Log(ctx).Infof("SVID: %q", svid.ID)
+	log.FromContext(ctx).Infof("SVID: %q", svid.ID)
 
 	// ********************************************************************************
-	logger.Log(ctx).Infof("executing phase 6: create sriovns network service endpoint (time since start: %s)", time.Since(starttime))
+	log.FromContext(ctx).Infof("executing phase 6: create sriovns network service endpoint (time since start: %s)", time.Since(starttime))
 	// ********************************************************************************
 	endpoint := sriovns.NewServer(
 		ctx,
@@ -208,11 +207,11 @@ func main() {
 	)
 
 	// ********************************************************************************
-	logger.Log(ctx).Infof("executing phase 7: create grpc server and register sriovns (time since start: %s)", time.Since(starttime))
+	log.FromContext(ctx).Infof("executing phase 7: create grpc server and register sriovns (time since start: %s)", time.Since(starttime))
 	// ********************************************************************************
 	tmpDir, err := ioutil.TempDir("", "sriov-forwarder")
 	if err != nil {
-		logger.Log(ctx).Fatalf("error creating tmpDir: %+v", err)
+		log.FromContext(ctx).Fatalf("error creating tmpDir: %+v", err)
 	}
 	defer func() { _ = os.RemoveAll(tmpDir) }()
 	listenOn := &url.URL{Scheme: "unix", Path: path.Join(tmpDir, "listen_on.io.sock")}
@@ -229,7 +228,7 @@ func main() {
 	exitOnErr(ctx, cancel, srvErrCh)
 
 	// ********************************************************************************
-	logger.Log(ctx).Infof("executing phase 8: register %s with the registry (time since start: %s)", config.NSName, time.Since(starttime))
+	log.FromContext(ctx).Infof("executing phase 8: register %s with the registry (time since start: %s)", config.NSName, time.Since(starttime))
 	// ********************************************************************************
 	clientOptions := append(
 		opentracing.WithTracingDial(),
@@ -248,7 +247,7 @@ func main() {
 		clientOptions...,
 	)
 	if err != nil {
-		logger.Log(ctx).Fatalf("failed to connect to registry: %+v", err)
+		log.FromContext(ctx).Fatalf("failed to connect to registry: %+v", err)
 	}
 
 	registryClient := registrychain.NewNetworkServiceEndpointRegistryClient(
@@ -263,10 +262,10 @@ func main() {
 		Url:                 grpcutils.URLToTarget(listenOn),
 	})
 	if err != nil {
-		logger.Log(ctx).Fatalf("failed to connect to registry: %+v", err)
+		log.FromContext(ctx).Fatalf("failed to connect to registry: %+v", err)
 	}
 
-	logger.Log(ctx).Infof("Startup completed in %v", time.Since(starttime))
+	log.FromContext(ctx).Infof("Startup completed in %v", time.Since(starttime))
 
 	<-ctx.Done()
 }
@@ -275,13 +274,13 @@ func exitOnErr(ctx context.Context, cancel context.CancelFunc, errCh <-chan erro
 	// If we already have an error, log it and exit
 	select {
 	case err := <-errCh:
-		logger.Log(ctx).Fatal(err)
+		log.FromContext(ctx).Fatal(err)
 	default:
 	}
 	// Otherwise wait for an error in the background to log and cancel
 	go func(ctx context.Context, errCh <-chan error) {
 		err := <-errCh
-		logger.Log(ctx).Error(err)
+		log.FromContext(ctx).Error(err)
 		cancel()
 	}(ctx, errCh)
 }
