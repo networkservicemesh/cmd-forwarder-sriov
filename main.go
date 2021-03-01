@@ -38,16 +38,13 @@ import (
 	registryapi "github.com/networkservicemesh/api/pkg/api/registry"
 	k8sdeviceplugin "github.com/networkservicemesh/sdk-k8s/pkg/tools/deviceplugin"
 	k8spodresources "github.com/networkservicemesh/sdk-k8s/pkg/tools/podresources"
-	"github.com/networkservicemesh/sdk-sriov/pkg/networkservice/chains/sriovns"
+	"github.com/networkservicemesh/sdk-sriov/pkg/networkservice/chains/xconnectns"
 	sriovconfig "github.com/networkservicemesh/sdk-sriov/pkg/sriov/config"
 	"github.com/networkservicemesh/sdk-sriov/pkg/sriov/pci"
 	"github.com/networkservicemesh/sdk-sriov/pkg/sriov/resource"
-	"github.com/networkservicemesh/sdk-sriov/pkg/sriov/token"
+	sriovtoken "github.com/networkservicemesh/sdk-sriov/pkg/sriov/token"
 	"github.com/networkservicemesh/sdk/pkg/networkservice/common/authorize"
-	"github.com/networkservicemesh/sdk/pkg/registry/common/interpose"
-	"github.com/networkservicemesh/sdk/pkg/registry/common/refresh"
-	registrysendfd "github.com/networkservicemesh/sdk/pkg/registry/common/sendfd"
-	registrychain "github.com/networkservicemesh/sdk/pkg/registry/core/chain"
+	registryclient "github.com/networkservicemesh/sdk/pkg/registry/chains/client"
 	"github.com/networkservicemesh/sdk/pkg/tools/debug"
 	"github.com/networkservicemesh/sdk/pkg/tools/grpcutils"
 	"github.com/networkservicemesh/sdk/pkg/tools/jaeger"
@@ -56,6 +53,7 @@ import (
 	"github.com/networkservicemesh/sdk/pkg/tools/opentracing"
 	"github.com/networkservicemesh/sdk/pkg/tools/signalctx"
 	"github.com/networkservicemesh/sdk/pkg/tools/spiffejwt"
+	"github.com/networkservicemesh/sdk/pkg/tools/token"
 
 	"github.com/networkservicemesh/cmd-forwarder-sriov/internal/deviceplugin"
 )
@@ -148,7 +146,7 @@ func main() {
 	log.FromContext(ctx).Infof("executing phase 3: init pools (time since start: %s)", time.Since(starttime))
 	// ********************************************************************************
 
-	tokenPool := token.NewPool(sriovConfig)
+	tokenPool := sriovtoken.NewPool(sriovConfig)
 
 	pciPool, err := pci.NewPool(config.PCIDevicesPath, config.PCIDriversPath, config.VFIOPath, sriovConfig)
 	if err != nil {
@@ -188,7 +186,7 @@ func main() {
 	// ********************************************************************************
 	log.FromContext(ctx).Infof("executing phase 6: create sriovns network service endpoint (time since start: %s)", time.Since(starttime))
 	// ********************************************************************************
-	endpoint := sriovns.NewServer(
+	endpoint := xconnectns.NewServer(
 		ctx,
 		config.Name,
 		authorize.NewServer(),
@@ -203,7 +201,12 @@ func main() {
 				credentials.NewTLS(tlsconfig.MTLSClientConfig(source, source, tlsconfig.AuthorizeAny())),
 			),
 		),
-		grpc.WithDefaultCallOptions(grpc.WaitForReady(true)),
+		grpc.WithDefaultCallOptions(
+			grpc.WaitForReady(true),
+			grpc.PerRPCCredentials(token.NewPerRPCCredentials(spiffejwt.TokenGeneratorFunc(source, config.MaxTokenLifetime))),
+		),
+		grpcfd.WithChainStreamInterceptor(),
+		grpcfd.WithChainUnaryInterceptor(),
 	)
 
 	// ********************************************************************************
@@ -250,12 +253,7 @@ func main() {
 		log.FromContext(ctx).Fatalf("failed to connect to registry: %+v", err)
 	}
 
-	registryClient := registrychain.NewNetworkServiceEndpointRegistryClient(
-		refresh.NewNetworkServiceEndpointRegistryClient(),
-		interpose.NewNetworkServiceEndpointRegistryClient(),
-		registrysendfd.NewNetworkServiceEndpointRegistryClient(),
-		registryapi.NewNetworkServiceEndpointRegistryClient(registryCC),
-	)
+	registryClient := registryclient.NewNetworkServiceEndpointRegistryInterposeClient(ctx, registryCC)
 	_, err = registryClient.Register(ctx, &registryapi.NetworkServiceEndpoint{
 		Name:                config.Name,
 		NetworkServiceNames: []string{config.NSName},
