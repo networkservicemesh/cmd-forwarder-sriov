@@ -44,10 +44,7 @@ import (
 	"github.com/networkservicemesh/sdk-sriov/pkg/sriov/resource"
 	sriovtoken "github.com/networkservicemesh/sdk-sriov/pkg/sriov/token"
 	"github.com/networkservicemesh/sdk/pkg/networkservice/common/authorize"
-	registryinterpose "github.com/networkservicemesh/sdk/pkg/registry/common/interpose"
-	registryrefresh "github.com/networkservicemesh/sdk/pkg/registry/common/refresh"
-	registrysendfd "github.com/networkservicemesh/sdk/pkg/registry/common/sendfd"
-	registrychain "github.com/networkservicemesh/sdk/pkg/registry/core/chain"
+	registryclient "github.com/networkservicemesh/sdk/pkg/registry/chains/client"
 	"github.com/networkservicemesh/sdk/pkg/tools/debug"
 	"github.com/networkservicemesh/sdk/pkg/tools/grpcutils"
 	"github.com/networkservicemesh/sdk/pkg/tools/jaeger"
@@ -256,12 +253,7 @@ func main() {
 		log.FromContext(ctx).Fatalf("failed to connect to registry: %+v", err)
 	}
 
-	registryClient := registrychain.NewNetworkServiceEndpointRegistryClient(
-		registryinterpose.NewNetworkServiceEndpointRegistryClient(),
-		registryrefresh.NewNetworkServiceEndpointRegistryClient(),
-		registrysendfd.NewNetworkServiceEndpointRegistryClient(),
-		registryapi.NewNetworkServiceEndpointRegistryClient(registryCC),
-	)
+	registryClient := registryclient.NewNetworkServiceEndpointRegistryInterposeClient(ctx, registryCC)
 	_, err = registryClient.Register(ctx, &registryapi.NetworkServiceEndpoint{
 		Name:                config.Name,
 		NetworkServiceNames: []string{config.NSName},
