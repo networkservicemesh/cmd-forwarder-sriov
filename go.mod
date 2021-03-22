@@ -8,8 +8,8 @@ require (
 	github.com/edwarnicke/grpcfd v0.0.0-20210219150442-10fb469a6976
 	github.com/kelseyhightower/envconfig v1.4.0
 	github.com/networkservicemesh/api v0.0.0-20210305165706-bcfdc8d78700
-	github.com/networkservicemesh/sdk v0.0.0-20210322080953-5bdbc048dab0
-	github.com/networkservicemesh/sdk-k8s v0.0.0-20210322081633-43b0edd253e4
+	github.com/networkservicemesh/sdk v0.0.0-20210322090132-801aa9713ef0
+	github.com/networkservicemesh/sdk-k8s v0.0.0-20210322090726-95fdd50d5372
 	github.com/networkservicemesh/sdk-sriov v0.0.0-20210319104916-7a3851122bc1
 	github.com/pkg/errors v0.9.1
 	github.com/sirupsen/logrus v1.7.0
