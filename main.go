@@ -23,8 +23,8 @@ import (
 	"io/ioutil"
 	"net/url"
 	"os"
-	"path"
 	"os/signal"
+	"path"
 	"syscall"
 	"time"
 
