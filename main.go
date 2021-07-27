@@ -55,8 +55,6 @@ import (
 	"github.com/networkservicemesh/sdk/pkg/tools/opentracing"
 	"github.com/networkservicemesh/sdk/pkg/tools/spiffejwt"
 	"github.com/networkservicemesh/sdk/pkg/tools/token"
-
-	"github.com/networkservicemesh/cmd-forwarder-sriov/internal/deviceplugin"
 )
 
 // Config - configuration for cmd-forwarder-sriov
@@ -168,7 +166,7 @@ func main() {
 	// ********************************************************************************
 
 	// Start device plugin server
-	if err = deviceplugin.StartServers(
+	if err = k8sdeviceplugin.StartServers(
 		ctx,
 		tokenPool,
 		config.ResourcePollTimeout,
