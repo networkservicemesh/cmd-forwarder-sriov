@@ -9,7 +9,7 @@ require (
 	github.com/kelseyhightower/envconfig v1.4.0
 	github.com/networkservicemesh/api v1.0.1-0.20210811070028-10403c0f20c8
 	github.com/networkservicemesh/sdk v0.5.1-0.20210817132536-a91779d763cf
-	github.com/networkservicemesh/sdk-k8s v0.0.0-20210816060457-712063d5c716
+	github.com/networkservicemesh/sdk-k8s v0.0.0-20210818070559-ebf32f0cd119
 	github.com/networkservicemesh/sdk-sriov v0.0.0-20210817133922-257aaff97d76
 	github.com/pkg/errors v0.9.1
 	github.com/sirupsen/logrus v1.7.0
