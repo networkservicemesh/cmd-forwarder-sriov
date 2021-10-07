@@ -73,6 +73,7 @@ type Config struct {
 	PCIDriversPath      string        `default:"/sys/bus/pci/drivers" desc:"path to the PCI drivers directory" split_words:"true"`
 	CgroupPath          string        `default:"/host/sys/fs/cgroup/devices" desc:"path to the host cgroup directory" split_words:"true"`
 	VFIOPath            string        `default:"/host/dev/vfio" desc:"path to the host VFIO directory" split_words:"true"`
+	LogLevel            string        `default:"INFO" desc:"Log level" split_words:"true"`
 }
 
 func main() {
@@ -135,6 +136,12 @@ func main() {
 	if err := envconfig.Process("nsm", config); err != nil {
 		log.FromContext(ctx).Fatalf("error processing config from env: %+v", err)
 	}
+
+	level, err := logrus.ParseLevel(config.LogLevel)
+	if err != nil {
+		logrus.Fatalf("invalid log level %s", config.LogLevel)
+	}
+	logrus.SetLevel(level)
 
 	log.FromContext(ctx).Infof("Config: %#v", config)
 
