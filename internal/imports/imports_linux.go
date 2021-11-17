@@ -14,7 +14,7 @@ import (
 	_ "github.com/networkservicemesh/sdk-k8s/pkg/tools/k8stest/podresources"
 	_ "github.com/networkservicemesh/sdk-k8s/pkg/tools/podresources"
 	_ "github.com/networkservicemesh/sdk-k8s/pkg/tools/socketpath"
-	_ "github.com/networkservicemesh/sdk-sriov/pkg/networkservice/chains/xconnectns"
+	_ "github.com/networkservicemesh/sdk-sriov/pkg/networkservice/chains/forwarder"
 	_ "github.com/networkservicemesh/sdk-sriov/pkg/sriov/config"
 	_ "github.com/networkservicemesh/sdk-sriov/pkg/sriov/pci"
 	_ "github.com/networkservicemesh/sdk-sriov/pkg/sriov/resource"
