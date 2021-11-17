@@ -40,7 +40,7 @@ import (
 	registryapi "github.com/networkservicemesh/api/pkg/api/registry"
 	k8sdeviceplugin "github.com/networkservicemesh/sdk-k8s/pkg/tools/deviceplugin"
 	k8spodresources "github.com/networkservicemesh/sdk-k8s/pkg/tools/podresources"
-	"github.com/networkservicemesh/sdk-sriov/pkg/networkservice/chains/xconnectns"
+	forwarder "github.com/networkservicemesh/sdk-sriov/pkg/networkservice/chains/forwarder"
 	sriovconfig "github.com/networkservicemesh/sdk-sriov/pkg/sriov/config"
 	"github.com/networkservicemesh/sdk-sriov/pkg/sriov/pci"
 	"github.com/networkservicemesh/sdk-sriov/pkg/sriov/resource"
@@ -62,8 +62,9 @@ import (
 // Config - configuration for cmd-forwarder-sriov
 type Config struct {
 	Name                string        `default:"sriov-forwarder" desc:"name of Endpoint"`
-	NSName              string        `default:"sriovns" desc:"Name of Network Service to Register with Registry"`
+	NSName              string        `default:"forwarder" desc:"Name of Network Service to Register with Registry"`
 	ConnectTo           url.URL       `default:"unix:///var/lib/networkservicemesh/nsm.io.sock" desc:"URL to connect to" split_words:"true"`
+	DialTimeout         time.Duration `default:"50ms" desc:"Timeout for the dial the next endpoint" split_words:"true"`
 	MaxTokenLifetime    time.Duration `default:"10m" desc:"maximum lifetime of tokens" split_words:"true"`
 	ResourcePollTimeout time.Duration `default:"30s" desc:"device plugin polling timeout" split_words:"true"`
 	DevicePluginPath    string        `default:"/var/lib/kubelet/device-plugins/" desc:"path to the device plugin directory" split_words:"true"`
@@ -123,7 +124,7 @@ func main() {
 	log.FromContext(ctx).Infof("5: retrieve spiffe svid")
 	log.FromContext(ctx).Infof("6: create sriovns network service endpoint")
 	log.FromContext(ctx).Infof("7: create grpc server and register sriovns")
-	log.FromContext(ctx).Infof("8: register xconnectns with the registry")
+	log.FromContext(ctx).Infof("8: register forwarder with the registry")
 	log.FromContext(ctx).Infof("a final success message with start time duration")
 
 	// ********************************************************************************
@@ -201,7 +202,7 @@ func main() {
 	// ********************************************************************************
 	log.FromContext(ctx).Infof("executing phase 6: create sriovns network service endpoint (time since start: %s)", time.Since(starttime))
 	// ********************************************************************************
-	endpoint := xconnectns.NewServer(
+	endpoint := forwarder.NewServer(
 		ctx,
 		config.Name,
 		authorize.NewServer(),
@@ -211,6 +212,7 @@ func main() {
 		sriovConfig,
 		config.VFIOPath, config.CgroupPath,
 		&config.ConnectTo,
+		config.DialTimeout,
 		grpc.WithTransportCredentials(
 			grpcfd.TransportCredentials(
 				credentials.NewTLS(tlsconfig.MTLSClientConfig(source, source, tlsconfig.AuthorizeAny())),
@@ -261,7 +263,7 @@ func main() {
 		),
 	)
 
-	nseRegistryClient := registryclient.NewNetworkServiceEndpointRegistryInterposeClient(ctx, &config.ConnectTo, registryclient.WithDialOptions(clientOptions...))
+	nseRegistryClient := registryclient.NewNetworkServiceEndpointRegistryClient(ctx, &config.ConnectTo, registryclient.WithDialOptions(clientOptions...))
 	_, err = nseRegistryClient.Register(ctx, &registryapi.NetworkServiceEndpoint{
 		Name:                config.Name,
 		NetworkServiceNames: []string{config.NSName},
