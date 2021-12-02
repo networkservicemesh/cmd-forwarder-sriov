@@ -269,7 +269,7 @@ func main() {
 		Name:                config.Name,
 		NetworkServiceNames: []string{config.NSName},
 		NetworkServiceLabels: map[string]*registryapi.NetworkServiceLabels{
-			config.NSName: &registryapi.NetworkServiceLabels{
+			config.NSName: {
 				Labels: config.Labels,
 			},
 		},
