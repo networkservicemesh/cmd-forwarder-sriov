@@ -1,4 +1,4 @@
-// Copyright (c) 2020-2021 Doc.ai and/or its affiliates.
+// Copyright (c) 2020-2022 Doc.ai and/or its affiliates.
 //
 // SPDX-License-Identifier: Apache-2.0
 //
@@ -14,7 +14,8 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-//+build linux
+//go:build linux
+// +build linux
 
 package main
 
@@ -49,33 +50,34 @@ import (
 	registryclient "github.com/networkservicemesh/sdk/pkg/registry/chains/client"
 	"github.com/networkservicemesh/sdk/pkg/tools/debug"
 	"github.com/networkservicemesh/sdk/pkg/tools/grpcutils"
-	"github.com/networkservicemesh/sdk/pkg/tools/jaeger"
 	"github.com/networkservicemesh/sdk/pkg/tools/log"
 	"github.com/networkservicemesh/sdk/pkg/tools/log/logruslogger"
-	"github.com/networkservicemesh/sdk/pkg/tools/opentracing"
+	"github.com/networkservicemesh/sdk/pkg/tools/opentelemetry"
 	"github.com/networkservicemesh/sdk/pkg/tools/spiffejwt"
 	"github.com/networkservicemesh/sdk/pkg/tools/token"
+	"github.com/networkservicemesh/sdk/pkg/tools/tracing"
 
 	"github.com/networkservicemesh/cmd-forwarder-sriov/internal/deviceplugin"
 )
 
 // Config - configuration for cmd-forwarder-sriov
 type Config struct {
-	Name                string            `default:"sriov-forwarder" desc:"name of Endpoint"`
-	Labels              map[string]string `default:"p2p:true" desc:"Labels related to this forwarder-sriov instance"`
-	NSName              string            `default:"forwarder" desc:"Name of Network Service to Register with Registry"`
-	ConnectTo           url.URL           `default:"unix:///var/lib/networkservicemesh/nsm.io.sock" desc:"URL to connect to" split_words:"true"`
-	DialTimeout         time.Duration     `default:"50ms" desc:"Timeout for the dial the next endpoint" split_words:"true"`
-	MaxTokenLifetime    time.Duration     `default:"10m" desc:"maximum lifetime of tokens" split_words:"true"`
-	ResourcePollTimeout time.Duration     `default:"30s" desc:"device plugin polling timeout" split_words:"true"`
-	DevicePluginPath    string            `default:"/var/lib/kubelet/device-plugins/" desc:"path to the device plugin directory" split_words:"true"`
-	PodResourcesPath    string            `default:"/var/lib/kubelet/pod-resources/" desc:"path to the pod resources directory" split_words:"true"`
-	SRIOVConfigFile     string            `default:"pci.config" desc:"PCI resources config path" split_words:"true"`
-	PCIDevicesPath      string            `default:"/sys/bus/pci/devices" desc:"path to the PCI devices directory" split_words:"true"`
-	PCIDriversPath      string            `default:"/sys/bus/pci/drivers" desc:"path to the PCI drivers directory" split_words:"true"`
-	CgroupPath          string            `default:"/host/sys/fs/cgroup/devices" desc:"path to the host cgroup directory" split_words:"true"`
-	VFIOPath            string            `default:"/host/dev/vfio" desc:"path to the host VFIO directory" split_words:"true"`
-	LogLevel            string            `default:"INFO" desc:"Log level" split_words:"true"`
+	Name                  string            `default:"sriov-forwarder" desc:"name of Endpoint"`
+	Labels                map[string]string `default:"p2p:true" desc:"Labels related to this forwarder-sriov instance"`
+	NSName                string            `default:"forwarder" desc:"Name of Network Service to Register with Registry"`
+	ConnectTo             url.URL           `default:"unix:///var/lib/networkservicemesh/nsm.io.sock" desc:"URL to connect to" split_words:"true"`
+	DialTimeout           time.Duration     `default:"50ms" desc:"Timeout for the dial the next endpoint" split_words:"true"`
+	MaxTokenLifetime      time.Duration     `default:"10m" desc:"maximum lifetime of tokens" split_words:"true"`
+	ResourcePollTimeout   time.Duration     `default:"30s" desc:"device plugin polling timeout" split_words:"true"`
+	DevicePluginPath      string            `default:"/var/lib/kubelet/device-plugins/" desc:"path to the device plugin directory" split_words:"true"`
+	PodResourcesPath      string            `default:"/var/lib/kubelet/pod-resources/" desc:"path to the pod resources directory" split_words:"true"`
+	SRIOVConfigFile       string            `default:"pci.config" desc:"PCI resources config path" split_words:"true"`
+	PCIDevicesPath        string            `default:"/sys/bus/pci/devices" desc:"path to the PCI devices directory" split_words:"true"`
+	PCIDriversPath        string            `default:"/sys/bus/pci/drivers" desc:"path to the PCI drivers directory" split_words:"true"`
+	CgroupPath            string            `default:"/host/sys/fs/cgroup/devices" desc:"path to the host cgroup directory" split_words:"true"`
+	VFIOPath              string            `default:"/host/dev/vfio" desc:"path to the host VFIO directory" split_words:"true"`
+	LogLevel              string            `default:"INFO" desc:"Log level" split_words:"true"`
+	OpenTelemetryEndpoint string            `default:"otel-collector.observability.svc.cluster.local:4317" desc:"OpenTelemetry Collector Endpoint"`
 }
 
 func main() {
@@ -95,15 +97,9 @@ func main() {
 	// ********************************************************************************
 	// setup logging
 	// ********************************************************************************
+	log.EnableTracing(true)
 	logrus.SetFormatter(&nested.Formatter{})
 	ctx = log.WithLog(ctx, logruslogger.New(ctx, map[string]interface{}{"cmd": os.Args[0]}))
-
-	// ********************************************************************************
-	// Configure open tracing
-	// ********************************************************************************
-	log.EnableTracing(true)
-	jaegerCloser := jaeger.InitJaeger(ctx, "cmd-forwarder-sriov")
-	defer func() { _ = jaegerCloser.Close() }()
 
 	// ********************************************************************************
 	// Debug self if necessary
@@ -145,6 +141,21 @@ func main() {
 	logrus.SetLevel(level)
 
 	log.FromContext(ctx).Infof("Config: %#v", config)
+
+	// ********************************************************************************
+	// Configure Open Telemetry
+	// ********************************************************************************
+	if opentelemetry.IsEnabled() {
+		collectorAddress := config.OpenTelemetryEndpoint
+		spanExporter := opentelemetry.InitSpanExporter(ctx, collectorAddress)
+		metricExporter := opentelemetry.InitMetricExporter(ctx, collectorAddress)
+		o := opentelemetry.Init(ctx, spanExporter, metricExporter, config.Name)
+		defer func() {
+			if err = o.Close(); err != nil {
+				log.FromContext(ctx).Error(err.Error())
+			}
+		}()
+	}
 
 	// ********************************************************************************
 	log.FromContext(ctx).Infof("executing phase 2: get SR-IOV config from file (time since start: %s)", time.Since(starttime))
@@ -237,7 +248,7 @@ func main() {
 	listenOn := &url.URL{Scheme: "unix", Path: path.Join(tmpDir, "listen_on.io.sock")}
 
 	server := grpc.NewServer(append(
-		opentracing.WithTracing(),
+		tracing.WithTracing(),
 		grpc.Creds(
 			grpcfd.TransportCredentials(
 				credentials.NewTLS(tlsconfig.MTLSServerConfig(source, source, tlsconfig.AuthorizeAny())),
@@ -251,7 +262,7 @@ func main() {
 	log.FromContext(ctx).Infof("executing phase 8: register %s with the registry (time since start: %s)", config.NSName, time.Since(starttime))
 	// ********************************************************************************
 	clientOptions := append(
-		opentracing.WithTracingDial(),
+		tracing.WithTracingDial(),
 		grpc.WithBlock(),
 		grpc.WithDefaultCallOptions(grpc.WaitForReady(true)),
 		grpc.WithTransportCredentials(
