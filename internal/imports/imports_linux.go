@@ -22,6 +22,7 @@ import (
 	_ "github.com/networkservicemesh/sdk-sriov/pkg/tools/tokens"
 	_ "github.com/networkservicemesh/sdk/pkg/networkservice/common/authorize"
 	_ "github.com/networkservicemesh/sdk/pkg/registry/chains/client"
+	_ "github.com/networkservicemesh/sdk/pkg/registry/common/begin"
 	_ "github.com/networkservicemesh/sdk/pkg/registry/common/expire"
 	_ "github.com/networkservicemesh/sdk/pkg/registry/common/memory"
 	_ "github.com/networkservicemesh/sdk/pkg/registry/common/recvfd"
