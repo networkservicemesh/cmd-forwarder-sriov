@@ -1,6 +1,6 @@
-// Copyright (c) 2020 Cisco and/or its affiliates.
+// Copyright (c) 2020-2022 Cisco and/or its affiliates.
 //
-// Copyright (c) 2020-2021 Doc.ai and/or its affiliates.
+// Copyright (c) 2020-2022 Doc.ai and/or its affiliates.
 //
 // SPDX-License-Identifier: Apache-2.0
 //
@@ -40,6 +40,7 @@ import (
 	"github.com/networkservicemesh/sdk-k8s/pkg/tools/k8stest/deviceplugin"
 	"github.com/networkservicemesh/sdk-k8s/pkg/tools/k8stest/podresources"
 	"github.com/networkservicemesh/sdk-k8s/pkg/tools/socketpath"
+	"github.com/networkservicemesh/sdk/pkg/registry/common/begin"
 	"github.com/networkservicemesh/sdk/pkg/registry/common/expire"
 	"github.com/networkservicemesh/sdk/pkg/registry/common/memory"
 	registryrecvfd "github.com/networkservicemesh/sdk/pkg/registry/common/recvfd"
@@ -127,6 +128,7 @@ func (f *ForwarderTestSuite) SetupSuite() {
 	// ********************************************************************************
 	memrg := memory.NewNetworkServiceEndpointRegistryServer()
 	registryServer := registrychain.NewNetworkServiceEndpointRegistryServer(
+		begin.NewNetworkServiceEndpointRegistryServer(),
 		expire.NewNetworkServiceEndpointRegistryServer(f.ctx, 24*time.Hour),
 		registryrecvfd.NewNetworkServiceEndpointRegistryServer(),
 		memrg,
