@@ -48,6 +48,7 @@ import (
 	sriovtoken "github.com/networkservicemesh/sdk-sriov/pkg/sriov/token"
 	"github.com/networkservicemesh/sdk/pkg/networkservice/common/authorize"
 	registryclient "github.com/networkservicemesh/sdk/pkg/registry/chains/client"
+	"github.com/networkservicemesh/sdk/pkg/registry/common/sendfd"
 	"github.com/networkservicemesh/sdk/pkg/tools/debug"
 	"github.com/networkservicemesh/sdk/pkg/tools/grpcutils"
 	"github.com/networkservicemesh/sdk/pkg/tools/log"
@@ -274,7 +275,12 @@ func main() {
 		),
 	)
 
-	nseRegistryClient := registryclient.NewNetworkServiceEndpointRegistryClient(ctx, &config.ConnectTo, registryclient.WithDialOptions(clientOptions...))
+	nseRegistryClient := registryclient.NewNetworkServiceEndpointRegistryClient(ctx, &config.ConnectTo,
+		registryclient.WithDialOptions(clientOptions...),
+		registryclient.WithNSEAdditionalFunctionality(
+			sendfd.NewNetworkServiceEndpointRegistryClient(),
+		),
+	)
 	_, err = nseRegistryClient.Register(ctx, &registryapi.NetworkServiceEndpoint{
 		Name:                config.Name,
 		NetworkServiceNames: []string{config.NSName},
