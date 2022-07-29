@@ -53,6 +53,7 @@ import (
 	"github.com/networkservicemesh/sdk/pkg/tools/grpcutils"
 	"github.com/networkservicemesh/sdk/pkg/tools/log"
 	"github.com/networkservicemesh/sdk/pkg/tools/log/logruslogger"
+	authmonitor "github.com/networkservicemesh/sdk/pkg/tools/monitorconnection/authorize"
 	"github.com/networkservicemesh/sdk/pkg/tools/opentelemetry"
 	"github.com/networkservicemesh/sdk/pkg/tools/spiffejwt"
 	"github.com/networkservicemesh/sdk/pkg/tools/token"
@@ -218,6 +219,7 @@ func main() {
 		ctx,
 		config.Name,
 		authorize.NewServer(),
+		authmonitor.NewMonitorConnectionServer(),
 		spiffejwt.TokenGeneratorFunc(source, config.MaxTokenLifetime),
 		pciPool,
 		resourcePool,
