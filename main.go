@@ -56,6 +56,7 @@ import (
 	authmonitor "github.com/networkservicemesh/sdk/pkg/tools/monitorconnection/authorize"
 	"github.com/networkservicemesh/sdk/pkg/tools/opentelemetry"
 	"github.com/networkservicemesh/sdk/pkg/tools/spiffejwt"
+	"github.com/networkservicemesh/sdk/pkg/tools/spire"
 	"github.com/networkservicemesh/sdk/pkg/tools/token"
 	"github.com/networkservicemesh/sdk/pkg/tools/tracing"
 
@@ -215,11 +216,12 @@ func main() {
 	// ********************************************************************************
 	log.FromContext(ctx).Infof("executing phase 6: create sriovns network service endpoint (time since start: %s)", time.Since(starttime))
 	// ********************************************************************************
+	spiffeIDConnMap := spire.SpiffeIDConnectionMap{}
 	endpoint := forwarder.NewServer(
 		ctx,
 		config.Name,
-		authorize.NewServer(),
-		authmonitor.NewMonitorConnectionServer(),
+		authorize.NewServer(authorize.WithSpiffeIDConnectionMap(&spiffeIDConnMap)),
+		authmonitor.NewMonitorConnectionServer(authmonitor.WithSpiffeIDConnectionMap(&spiffeIDConnMap)),
 		spiffejwt.TokenGeneratorFunc(source, config.MaxTokenLifetime),
 		pciPool,
 		resourcePool,
