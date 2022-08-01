@@ -53,8 +53,10 @@ import (
 	"github.com/networkservicemesh/sdk/pkg/tools/grpcutils"
 	"github.com/networkservicemesh/sdk/pkg/tools/log"
 	"github.com/networkservicemesh/sdk/pkg/tools/log/logruslogger"
+	monitorauthorize "github.com/networkservicemesh/sdk/pkg/tools/monitorconnection/authorize"
 	"github.com/networkservicemesh/sdk/pkg/tools/opentelemetry"
 	"github.com/networkservicemesh/sdk/pkg/tools/spiffejwt"
+	"github.com/networkservicemesh/sdk/pkg/tools/spire"
 	"github.com/networkservicemesh/sdk/pkg/tools/token"
 	"github.com/networkservicemesh/sdk/pkg/tools/tracing"
 
@@ -214,10 +216,13 @@ func main() {
 	// ********************************************************************************
 	log.FromContext(ctx).Infof("executing phase 6: create sriovns network service endpoint (time since start: %s)", time.Since(starttime))
 	// ********************************************************************************
+	var spiffeidMap spire.SpiffeIDConnectionMap
+
 	endpoint := forwarder.NewServer(
 		ctx,
 		config.Name,
-		authorize.NewServer(),
+		authorize.NewServer(authorize.WithSpiffeIDConnectionMap(&spiffeidMap)),
+		monitorauthorize.NewMonitorConnectionServer(monitorauthorize.WithSpiffeIDConnectionMap(&spiffeidMap)),
 		spiffejwt.TokenGeneratorFunc(source, config.MaxTokenLifetime),
 		pciPool,
 		resourcePool,
