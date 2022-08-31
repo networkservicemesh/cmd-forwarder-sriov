@@ -8,9 +8,9 @@ require (
 	github.com/edwarnicke/grpcfd v1.1.2
 	github.com/kelseyhightower/envconfig v1.4.0
 	github.com/networkservicemesh/api v1.4.1-0.20220711153918-a59689088578
-	github.com/networkservicemesh/sdk v0.5.1-0.20220825014614-dacfc9890c07
+	github.com/networkservicemesh/sdk v0.5.1-0.20220831094238-ed5cc972107d
 	github.com/networkservicemesh/sdk-k8s v0.0.0-20220816111430-72783c8b0303
-	github.com/networkservicemesh/sdk-sriov v0.0.0-20220825015442-a1564acd4a60
+	github.com/networkservicemesh/sdk-sriov v0.0.0-20220831095420-02db1b0435f8
 	github.com/pkg/errors v0.9.1
 	github.com/sirupsen/logrus v1.9.0
 	github.com/spiffe/go-spiffe/v2 v2.0.0
@@ -37,7 +37,7 @@ require (
 	github.com/google/shlex v0.0.0-20191202100458-e7afc7fbc510 // indirect
 	github.com/google/uuid v1.2.0 // indirect
 	github.com/grpc-ecosystem/grpc-gateway/v2 v2.7.0 // indirect
-	github.com/networkservicemesh/sdk-kernel v0.0.0-20220825014933-e8b76c058df6 // indirect
+	github.com/networkservicemesh/sdk-kernel v0.0.0-20220831094708-45248ec98ad6 // indirect
 	github.com/open-policy-agent/opa v0.43.0 // indirect
 	github.com/pmezard/go-difflib v1.0.0 // indirect
 	github.com/rcrowley/go-metrics v0.0.0-20201227073835-cf1acfcdf475 // indirect
