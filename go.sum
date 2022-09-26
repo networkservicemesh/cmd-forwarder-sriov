@@ -20,6 +20,8 @@ cloud.google.com/go/bigquery v1.4.0/go.mod h1:S8dzgnTigyfTmLBfrtrhyYhwRxG72rYxvf
 cloud.google.com/go/bigquery v1.5.0/go.mod h1:snEHRnqQbz117VIFhE8bmtwIDY80NLUZUMb4Nv6dBIg=
 cloud.google.com/go/bigquery v1.7.0/go.mod h1://okPTzCYNXSlb24MZs83e2Do+h+VXtc4gLoIoXIAPc=
 cloud.google.com/go/bigquery v1.8.0/go.mod h1:J5hqkt3O0uAFnINi6JXValWIb1v0goeZM77hZzJN/fQ=
+cloud.google.com/go/compute v1.10.0 h1:aoLIYaA1fX3ywihqpBk2APQKOo20nXsp1GEZQbx5Jk4=
+cloud.google.com/go/compute v1.10.0/go.mod h1:ER5CLbMxl90o2jtNbGSbtfOpQKR0t15FOtRsugnLrlU=
 cloud.google.com/go/datastore v1.0.0/go.mod h1:LXYbyblFSglQ5pkeyhO+Qmw7ukd3C+pD7TKLgZqpHYE=
 cloud.google.com/go/datastore v1.1.0/go.mod h1:umbIZjpQpHh4hmRpGhH4tLFup+FVzqBi1b3c64qFpCk=
 cloud.google.com/go/firestore v1.1.0/go.mod h1:ulACoGHTpvq5r8rxGJ4ddJZBZqakUQqClKRT5SZwBmk=
@@ -341,6 +343,8 @@ github.com/networkservicemesh/sdk v0.5.1-0.20220923160652-5ce22c12fabe h1:BSZCe7
 github.com/networkservicemesh/sdk v0.5.1-0.20220923160652-5ce22c12fabe/go.mod h1:YnWv4wspKOtfFsc7kC5tfs7n95Snj3C0MRCal7yytVE=
 github.com/networkservicemesh/sdk-k8s v0.0.0-20220907173557-1adc517b91ae h1:XYt0tpel2tS4ppkcjDm6G86cIMU/45xjrCw05dRBQWM=
 github.com/networkservicemesh/sdk-k8s v0.0.0-20220907173557-1adc517b91ae/go.mod h1:HN0tAAHW/pWSXK+sVB5zVb6AXuRB+p1aZOpakt7mMLw=
+github.com/networkservicemesh/sdk-k8s v0.0.0-20220923161340-e4de782afbf2 h1:9PV5O0Qq63jDT9VhfvOLOP603cdhZDtbpSgVF9+eRZI=
+github.com/networkservicemesh/sdk-k8s v0.0.0-20220923161340-e4de782afbf2/go.mod h1:sRHIy4expD6lFgQlyEC3F4EGnrJAiEsRQWHw2Nf79yI=
 github.com/networkservicemesh/sdk-kernel v0.0.0-20220923161019-7ba274536214 h1:ux3dh8RtuvhQGP4a5fPslt3ORneYpFSffZ7Aj0Ac3kc=
 github.com/networkservicemesh/sdk-kernel v0.0.0-20220923161019-7ba274536214/go.mod h1:umPw6Cgd6967YzfTPHSIYAZeTwcrCHkKmChcVbWhoC0=
 github.com/networkservicemesh/sdk-sriov v0.0.0-20220923161409-b5115093d81b h1:VG+wV0/Lz3d8URz4B8evRZCokzfsZ4hErKo48SrHRyw=
@@ -592,6 +596,7 @@ golang.org/x/net v0.0.0-20210405180319-a5a99cb37ef4/go.mod h1:p54w0d4576C0XHj96b
 golang.org/x/net v0.0.0-20210520170846-37e1c6afe023/go.mod h1:9nx3DQGgdP8bBQD5qxJ1jj9UTztislL4KSBs9R2vV5Y=
 golang.org/x/net v0.0.0-20220907135653-1e95f45603a7 h1:1WGATo9HAhkWMbfyuVU0tEFP88OIkUvwaHFveQPvzCQ=
 golang.org/x/net v0.0.0-20220907135653-1e95f45603a7/go.mod h1:YDH+HFinaLZZlnHAfSS6ZXJJ9M9t4Dl22yv3iI2vPwk=
+golang.org/x/net v0.0.0-20220909164309-bea034e7d591/go.mod h1:YDH+HFinaLZZlnHAfSS6ZXJJ9M9t4Dl22yv3iI2vPwk=
 golang.org/x/oauth2 v0.0.0-20180821212333-d2e6202438be/go.mod h1:N/0e6XlmueqKjAGxoOufVs8QHGRruUQn6yWY3a++T0U=
 golang.org/x/oauth2 v0.0.0-20190226205417-e64efc72b421/go.mod h1:gOpvHmFTYa4IltrdGE7lF6nIHvwfUNPOp7c8zoXwtLw=
 golang.org/x/oauth2 v0.0.0-20190604053449-0f29369cfe45/go.mod h1:gOpvHmFTYa4IltrdGE7lF6nIHvwfUNPOp7c8zoXwtLw=
@@ -794,6 +799,7 @@ google.golang.org/genproto v0.0.0-20210602131652-f16073e35f0c/go.mod h1:UODoCrxH
 google.golang.org/genproto v0.0.0-20211118181313-81c1377c94b1/go.mod h1:5CzLGKJ67TSI2B9POpiiyGha0AjJvZIUgRMt1dSmuhc=
 google.golang.org/genproto v0.0.0-20220908141613-51c1cc9bc6d0 h1:bMz0aY2wd9TwUp9M7QfjBWuQqaFD/ZaTtvDpPDCo2Ow=
 google.golang.org/genproto v0.0.0-20220908141613-51c1cc9bc6d0/go.mod h1:rQWNQYp1kbHR3+n5cARSTCF5rlJOttUn8yIhRklGAWQ=
+google.golang.org/genproto v0.0.0-20220915135415-7fd63a7952de/go.mod h1:0Nb8Qy+Sk5eDzHnzlStwW3itdNaWoZA5XeSG+R3JHSo=
 google.golang.org/grpc v1.19.0/go.mod h1:mqu4LbDTu4XGKhr4mRzUsmM4RtVoemTSY81AxZiDr8c=
 google.golang.org/grpc v1.20.1/go.mod h1:10oTOabMzJvdu6/UiuZezV6QK5dSlG84ov/aaiqXj38=
 google.golang.org/grpc v1.21.1/go.mod h1:oYelfM1adQP15Ek0mdvEgi9Df8B9CZIaU1084ijfRaM=
