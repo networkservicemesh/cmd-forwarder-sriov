@@ -9,14 +9,14 @@ require (
 	github.com/kelseyhightower/envconfig v1.4.0
 	github.com/networkservicemesh/api v1.6.2-0.20221205183940-84c7ff837cdd
 	github.com/networkservicemesh/sdk v0.5.1-0.20221206103812-b6979bfe147d
-	github.com/networkservicemesh/sdk-k8s v0.0.0-20221128102348-7b25c04bed9e
+	github.com/networkservicemesh/sdk-k8s v0.0.0-20221206232124-a44ae6cddbad
 	github.com/networkservicemesh/sdk-sriov v0.0.0-20221206105157-ce61d862f46f
 	github.com/pkg/errors v0.9.1
 	github.com/sirupsen/logrus v1.9.0
 	github.com/spiffe/go-spiffe/v2 v2.0.0
 	github.com/stretchr/testify v1.8.0
 	google.golang.org/grpc v1.49.0
-	k8s.io/kubelet v0.22.1
+	k8s.io/kubelet v0.25.4
 )
 
 require (
