@@ -66,22 +66,23 @@ import (
 
 // Config - configuration for cmd-forwarder-sriov
 type Config struct {
-	Name                  string            `default:"sriov-forwarder" desc:"name of Endpoint"`
-	Labels                map[string]string `default:"p2p:true" desc:"Labels related to this forwarder-sriov instance"`
-	NSName                string            `default:"forwarder" desc:"Name of Network Service to Register with Registry"`
-	ConnectTo             url.URL           `default:"unix:///var/lib/networkservicemesh/nsm.io.sock" desc:"URL to connect to" split_words:"true"`
-	DialTimeout           time.Duration     `default:"50ms" desc:"Timeout for the dial the next endpoint" split_words:"true"`
-	MaxTokenLifetime      time.Duration     `default:"10m" desc:"maximum lifetime of tokens" split_words:"true"`
-	ResourcePollTimeout   time.Duration     `default:"30s" desc:"device plugin polling timeout" split_words:"true"`
-	DevicePluginPath      string            `default:"/var/lib/kubelet/device-plugins/" desc:"path to the device plugin directory" split_words:"true"`
-	PodResourcesPath      string            `default:"/var/lib/kubelet/pod-resources/" desc:"path to the pod resources directory" split_words:"true"`
-	SRIOVConfigFile       string            `default:"pci.config" desc:"PCI resources config path" split_words:"true"`
-	PCIDevicesPath        string            `default:"/sys/bus/pci/devices" desc:"path to the PCI devices directory" split_words:"true"`
-	PCIDriversPath        string            `default:"/sys/bus/pci/drivers" desc:"path to the PCI drivers directory" split_words:"true"`
-	CgroupPath            string            `default:"/host/sys/fs/cgroup/devices" desc:"path to the host cgroup directory" split_words:"true"`
-	VFIOPath              string            `default:"/host/dev/vfio" desc:"path to the host VFIO directory" split_words:"true"`
-	LogLevel              string            `default:"INFO" desc:"Log level" split_words:"true"`
-	OpenTelemetryEndpoint string            `default:"otel-collector.observability.svc.cluster.local:4317" desc:"OpenTelemetry Collector Endpoint"`
+	Name                   string            `default:"sriov-forwarder" desc:"name of Endpoint"`
+	Labels                 map[string]string `default:"p2p:true" desc:"Labels related to this forwarder-sriov instance"`
+	NSName                 string            `default:"forwarder" desc:"Name of Network Service to Register with Registry"`
+	ConnectTo              url.URL           `default:"unix:///var/lib/networkservicemesh/nsm.io.sock" desc:"URL to connect to" split_words:"true"`
+	DialTimeout            time.Duration     `default:"50ms" desc:"Timeout for the dial the next endpoint" split_words:"true"`
+	MaxTokenLifetime       time.Duration     `default:"10m" desc:"maximum lifetime of tokens" split_words:"true"`
+	RegistryClientPolicies []string          `default:"etc/nsm/opa/common/.*.rego,etc/nsm/opa/registry/.*.rego,etc/nsm/opa/client/.*.rego" desc:"paths to files and directories that contain registry client policies" split_words:"true"`
+	ResourcePollTimeout    time.Duration     `default:"30s" desc:"device plugin polling timeout" split_words:"true"`
+	DevicePluginPath       string            `default:"/var/lib/kubelet/device-plugins/" desc:"path to the device plugin directory" split_words:"true"`
+	PodResourcesPath       string            `default:"/var/lib/kubelet/pod-resources/" desc:"path to the pod resources directory" split_words:"true"`
+	SRIOVConfigFile        string            `default:"pci.config" desc:"PCI resources config path" split_words:"true"`
+	PCIDevicesPath         string            `default:"/sys/bus/pci/devices" desc:"path to the PCI devices directory" split_words:"true"`
+	PCIDriversPath         string            `default:"/sys/bus/pci/drivers" desc:"path to the PCI drivers directory" split_words:"true"`
+	CgroupPath             string            `default:"/host/sys/fs/cgroup/devices" desc:"path to the host cgroup directory" split_words:"true"`
+	VFIOPath               string            `default:"/host/dev/vfio" desc:"path to the host VFIO directory" split_words:"true"`
+	LogLevel               string            `default:"INFO" desc:"Log level" split_words:"true"`
+	OpenTelemetryEndpoint  string            `default:"otel-collector.observability.svc.cluster.local:4317" desc:"OpenTelemetry Collector Endpoint"`
 }
 
 func main() {
@@ -291,7 +292,9 @@ func main() {
 		registryclient.WithNSEAdditionalFunctionality(
 			sendfd.NewNetworkServiceEndpointRegistryClient(),
 		),
-		registryclient.WithAuthorizeNSERegistryClient(registryauthorize.NewNetworkServiceEndpointRegistryClient()),
+		registryclient.WithAuthorizeNSERegistryClient(registryauthorize.NewNetworkServiceEndpointRegistryClient(
+			registryauthorize.WithPolicies(config.RegistryClientPolicies...),
+		)),
 	)
 	_, err = nseRegistryClient.Register(ctx, &registryapi.NetworkServiceEndpoint{
 		Name:                config.Name,
