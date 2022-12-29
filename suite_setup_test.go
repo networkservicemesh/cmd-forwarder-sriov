@@ -129,7 +129,7 @@ func (f *ForwarderTestSuite) SetupSuite() {
 	memrg := memory.NewNetworkServiceEndpointRegistryServer()
 	registryServer := registrychain.NewNetworkServiceEndpointRegistryServer(
 		begin.NewNetworkServiceEndpointRegistryServer(),
-		expire.NewNetworkServiceEndpointRegistryServer(f.ctx, 24*time.Hour),
+		expire.NewNetworkServiceEndpointRegistryServer(f.ctx, expire.WithDefaultExpiration(24*time.Hour)),
 		registryrecvfd.NewNetworkServiceEndpointRegistryServer(),
 		memrg,
 	)
