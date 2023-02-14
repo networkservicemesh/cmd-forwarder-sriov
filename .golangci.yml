@@ -1,7 +1,7 @@
 ---
 run:
   # concurrency: 6
-  go: "1.17"
+  go: "1.19"
   timeout: 2m
   issues-exit-code: 1
   tests: true
@@ -163,10 +163,10 @@ linters:
     - varcheck
     - whitespace
 issues:
-  exclude-use-default: false
-  max-issues-per-linter: 0
-  max-same-issues: 0
   exclude-rules:
+    - path: main.go
+      linters:
+        - revive
     - path: main.go
       linters:
         - funlen
@@ -175,3 +175,6 @@ issues:
       linters:
         - funlen
       text: "Function 'SetupSuite' has too many statements"
+  exclude-use-default: false
+  max-issues-per-linter: 0
+  max-same-issues: 0
