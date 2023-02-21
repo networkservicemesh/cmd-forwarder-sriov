@@ -3,9 +3,11 @@ package imports
 
 import (
 	_ "context"
+	_ "crypto/tls"
 	_ "fmt"
 	_ "github.com/antonfisher/nested-logrus-formatter"
 	_ "github.com/edwarnicke/exechelper"
+	_ "github.com/edwarnicke/genericsync"
 	_ "github.com/edwarnicke/grpcfd"
 	_ "github.com/kelseyhightower/envconfig"
 	_ "github.com/networkservicemesh/api/pkg/api/registry"
@@ -43,6 +45,7 @@ import (
 	_ "github.com/pkg/errors"
 	_ "github.com/sirupsen/logrus"
 	_ "github.com/spiffe/go-spiffe/v2/bundle/x509bundle"
+	_ "github.com/spiffe/go-spiffe/v2/spiffeid"
 	_ "github.com/spiffe/go-spiffe/v2/spiffetls/tlsconfig"
 	_ "github.com/spiffe/go-spiffe/v2/svid/x509svid"
 	_ "github.com/spiffe/go-spiffe/v2/workloadapi"
