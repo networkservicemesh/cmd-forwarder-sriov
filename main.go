@@ -1,5 +1,7 @@
 // Copyright (c) 2020-2022 Doc.ai and/or its affiliates.
 //
+// Copyright (c) 2023 Cisco and/or its affiliates.
+//
 // SPDX-License-Identifier: Apache-2.0
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
@@ -21,6 +23,7 @@ package main
 
 import (
 	"context"
+	"crypto/tls"
 	"io/ioutil"
 	"net/url"
 	"os"
@@ -30,9 +33,11 @@ import (
 	"time"
 
 	nested "github.com/antonfisher/nested-logrus-formatter"
+	"github.com/edwarnicke/genericsync"
 	"github.com/edwarnicke/grpcfd"
 	"github.com/kelseyhightower/envconfig"
 	"github.com/sirupsen/logrus"
+	"github.com/spiffe/go-spiffe/v2/spiffeid"
 	"github.com/spiffe/go-spiffe/v2/spiffetls/tlsconfig"
 	"github.com/spiffe/go-spiffe/v2/workloadapi"
 	"google.golang.org/grpc"
@@ -57,7 +62,6 @@ import (
 	monitorauthorize "github.com/networkservicemesh/sdk/pkg/tools/monitorconnection/authorize"
 	"github.com/networkservicemesh/sdk/pkg/tools/opentelemetry"
 	"github.com/networkservicemesh/sdk/pkg/tools/spiffejwt"
-	"github.com/networkservicemesh/sdk/pkg/tools/spire"
 	"github.com/networkservicemesh/sdk/pkg/tools/token"
 	"github.com/networkservicemesh/sdk/pkg/tools/tracing"
 
@@ -218,7 +222,23 @@ func main() {
 	// ********************************************************************************
 	log.FromContext(ctx).Infof("executing phase 6: create sriovns network service endpoint (time since start: %s)", time.Since(starttime))
 	// ********************************************************************************
-	var spiffeidMap spire.SpiffeIDConnectionMap
+	tlsClientConfig := tlsconfig.MTLSClientConfig(source, source, tlsconfig.AuthorizeAny())
+	tlsClientConfig.MinVersion = tls.VersionTLS12
+	tlsServerConfig := tlsconfig.MTLSServerConfig(source, source, tlsconfig.AuthorizeAny())
+	tlsServerConfig.MinVersion = tls.VersionTLS12
+
+	dialOptions := []grpc.DialOption{
+		grpc.WithBlock(),
+		grpc.WithTransportCredentials(
+			grpcfd.TransportCredentials(credentials.NewTLS(tlsClientConfig))),
+		grpc.WithDefaultCallOptions(
+			grpc.PerRPCCredentials(token.NewPerRPCCredentials(spiffejwt.TokenGeneratorFunc(source, config.MaxTokenLifetime))),
+		),
+		grpcfd.WithChainStreamInterceptor(),
+		grpcfd.WithChainUnaryInterceptor(),
+	}
+
+	var spiffeidMap genericsync.Map[spiffeid.ID, *genericsync.Map[string, struct{}]]
 
 	endpoint := forwarder.NewServer(
 		ctx,
@@ -232,17 +252,7 @@ func main() {
 		config.VFIOPath, config.CgroupPath,
 		&config.ConnectTo,
 		config.DialTimeout,
-		grpc.WithTransportCredentials(
-			grpcfd.TransportCredentials(
-				credentials.NewTLS(tlsconfig.MTLSClientConfig(source, source, tlsconfig.AuthorizeAny())),
-			),
-		),
-		grpc.WithDefaultCallOptions(
-			grpc.WaitForReady(true),
-			grpc.PerRPCCredentials(token.NewPerRPCCredentials(spiffejwt.TokenGeneratorFunc(source, config.MaxTokenLifetime))),
-		),
-		grpcfd.WithChainStreamInterceptor(),
-		grpcfd.WithChainUnaryInterceptor(),
+		dialOptions...,
 	)
 
 	// ********************************************************************************
@@ -259,7 +269,7 @@ func main() {
 		tracing.WithTracing(),
 		grpc.Creds(
 			grpcfd.TransportCredentials(
-				credentials.NewTLS(tlsconfig.MTLSServerConfig(source, source, tlsconfig.AuthorizeAny())),
+				credentials.NewTLS(tlsServerConfig),
 			),
 		))...)
 	endpoint.Register(server)
