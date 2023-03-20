@@ -227,16 +227,16 @@ func main() {
 	tlsServerConfig := tlsconfig.MTLSServerConfig(source, source, tlsconfig.AuthorizeAny())
 	tlsServerConfig.MinVersion = tls.VersionTLS12
 
-	dialOptions := []grpc.DialOption{
-		grpc.WithBlock(),
+	dialOptions := append(tracing.WithTracingDial(),
 		grpc.WithTransportCredentials(
 			grpcfd.TransportCredentials(credentials.NewTLS(tlsClientConfig))),
+		grpc.WithBlock(),
 		grpc.WithDefaultCallOptions(
 			grpc.PerRPCCredentials(token.NewPerRPCCredentials(spiffejwt.TokenGeneratorFunc(source, config.MaxTokenLifetime))),
 		),
 		grpcfd.WithChainStreamInterceptor(),
 		grpcfd.WithChainUnaryInterceptor(),
-	}
+	)
 
 	var spiffeidMap genericsync.Map[spiffeid.ID, *genericsync.Map[string, struct{}]]
 
