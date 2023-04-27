@@ -200,10 +200,10 @@ github.com/matttproud/golang_protobuf_extensions v1.0.2-0.20181231171920-c182aff
 github.com/miekg/dns v1.1.50 h1:DQUfb9uc6smULcREF09Uc+/Gd46YWqJd5DbpPE9xkcA=
 github.com/networkservicemesh/api v1.7.2-0.20230123083145-4a6c3ec589e1 h1:RxNKksXsXsnDsEo+Cfn43pdPfML024ad//QcdKfgXK4=
 github.com/networkservicemesh/api v1.7.2-0.20230123083145-4a6c3ec589e1/go.mod h1:hOF2844BSstH1311oDMDgqqXS+kdc77htZNPRKl9mf8=
-github.com/networkservicemesh/sdk v0.5.1-0.20230418121941-777f572539ba h1:ctuQa7zcNtEmh7gQYeiLkhsp2MsWuxUUu7+t3OckCQE=
-github.com/networkservicemesh/sdk v0.5.1-0.20230418121941-777f572539ba/go.mod h1:hmu0t7IxKa1v7Mj7Y3dQrcpRD0YtEyFE5vJorXRQT2A=
-github.com/networkservicemesh/sdk-k8s v0.0.0-20230328153853-948f21eeced9 h1:TyycdqTGfo59Fiu250Y/RjXlrmWZsgZgMsOpj8Ino1U=
-github.com/networkservicemesh/sdk-k8s v0.0.0-20230328153853-948f21eeced9/go.mod h1:RKe5mTIXOnE3qCwH+SVim+JzJJpkDsS4SgwepiEWTGA=
+github.com/networkservicemesh/sdk v0.5.1-0.20230427091455-fbf0404f010e h1:pHZaqjx711QgK/sL7DCpE5KY++oSnmP875/oHfUTovE=
+github.com/networkservicemesh/sdk v0.5.1-0.20230427091455-fbf0404f010e/go.mod h1:hmu0t7IxKa1v7Mj7Y3dQrcpRD0YtEyFE5vJorXRQT2A=
+github.com/networkservicemesh/sdk-k8s v0.0.0-20230427092143-8fa0a8c3f7d2 h1:BdV/QweHuZ6vTvCgvryhdoMdoY4uHpVKJsSegQPnHCQ=
+github.com/networkservicemesh/sdk-k8s v0.0.0-20230427092143-8fa0a8c3f7d2/go.mod h1:Jzwp595QEc0p5051h9tKE0wi5aky0pIaFZxjEuO2Wq0=
 github.com/networkservicemesh/sdk-kernel v0.0.0-20230418122259-7462e6c6b3db h1:ejlUfJl9qaZqCWaTVADYeVsaUdV/17aRy3ArL3gUqNg=
 github.com/networkservicemesh/sdk-kernel v0.0.0-20230418122259-7462e6c6b3db/go.mod h1:9t/3pZYrQ16FAH+aZ07JvrvHwdQ+hlvk/iA6tQ1j+k0=
 github.com/networkservicemesh/sdk-sriov v0.0.0-20230418122757-af78753d01f7 h1:UWAzONe1CVt7iUsmyO6dcdcGmZ5eo5ZVJHGpgtBKyNg=
