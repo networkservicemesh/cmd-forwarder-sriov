@@ -53,7 +53,6 @@ import (
 	_ "google.golang.org/grpc"
 	_ "google.golang.org/grpc/credentials"
 	_ "google.golang.org/grpc/health/grpc_health_v1"
-	_ "io/ioutil"
 	_ "k8s.io/kubelet/pkg/apis/deviceplugin/v1beta1"
 	_ "k8s.io/kubelet/pkg/apis/podresources/v1alpha1"
 	_ "net/url"

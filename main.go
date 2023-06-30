@@ -24,7 +24,6 @@ package main
 import (
 	"context"
 	"crypto/tls"
-	"io/ioutil"
 	"net/url"
 	"os"
 	"os/signal"
@@ -258,7 +257,7 @@ func main() {
 	// ********************************************************************************
 	log.FromContext(ctx).Infof("executing phase 7: create grpc server and register sriovns (time since start: %s)", time.Since(starttime))
 	// ********************************************************************************
-	tmpDir, err := ioutil.TempDir("", "sriov-forwarder")
+	tmpDir, err := os.MkdirTemp("", "sriov-forwarder")
 	if err != nil {
 		log.FromContext(ctx).Fatalf("error creating tmpDir: %+v", err)
 	}
