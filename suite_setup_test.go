@@ -1,6 +1,6 @@
-// Copyright (c) 2020-2022 Cisco and/or its affiliates.
-//
 // Copyright (c) 2020-2022 Doc.ai and/or its affiliates.
+//
+// Copyright (c) 2020-2023 Cisco and/or its affiliates.
 //
 // SPDX-License-Identifier: Apache-2.0
 //
@@ -92,7 +92,7 @@ func (f *ForwarderTestSuite) SetupSuite() {
 	f.Require().NoError(err)
 	f.spireErrCh = spire.Start(
 		spire.WithContext(f.ctx),
-		spire.WithEntry("spiffe://example.org/forwarder", "unix:path:/bin/forwarder"),
+		spire.WithEntry("spiffe://example.org/forwarder", "unix:path:/usr/bin/forwarder"),
 		spire.WithEntry(fmt.Sprintf("spiffe://example.org/%s", filepath.Base(executable)),
 			fmt.Sprintf("unix:path:%s", executable),
 		),
