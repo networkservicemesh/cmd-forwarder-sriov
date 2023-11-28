@@ -10,7 +10,7 @@ require (
 	github.com/kelseyhightower/envconfig v1.4.0
 	github.com/networkservicemesh/api v1.11.2-rc.1
 	github.com/networkservicemesh/sdk v1.11.2-rc.1
-	github.com/networkservicemesh/sdk-k8s v0.0.0-20231123112133-3a307c41ee71
+	github.com/networkservicemesh/sdk-k8s v1.11.2-rc.1
 	github.com/networkservicemesh/sdk-sriov v1.11.2-rc.1
 	github.com/pkg/errors v0.9.1
 	github.com/sirupsen/logrus v1.9.0
@@ -21,7 +21,6 @@ require (
 )
 
 require (
-	cloud.google.com/go/compute/metadata v0.2.3 // indirect
 	github.com/OneOfOne/xxhash v1.2.8 // indirect
 	github.com/agnivade/levenshtein v1.1.1 // indirect
 	github.com/beorn7/perks v1.0.1 // indirect
