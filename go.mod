@@ -44,7 +44,7 @@ require (
 	github.com/google/uuid v1.3.1 // indirect
 	github.com/grpc-ecosystem/grpc-gateway/v2 v2.16.0 // indirect
 	github.com/matttproud/golang_protobuf_extensions v1.0.4 // indirect
-	github.com/networkservicemesh/sdk-kernel v0.0.0-20240319090539-7a9f71dfaa22 // indirect
+	github.com/networkservicemesh/sdk-kernel v0.0.0-20240321095124-f7872e513748 // indirect
 	github.com/open-policy-agent/opa v0.44.0 // indirect
 	github.com/pmezard/go-difflib v1.0.0 // indirect
 	github.com/prometheus/client_golang v1.17.0 // indirect
