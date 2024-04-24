@@ -36,7 +36,6 @@ Also it works as a device plugin server providing resources for the client pods.
 * `NSM_METRICS_EXPORT_INTERVAL`     -  interval between mertics exports
 * `NSM_OPEN_TELEMETRY_ENDPOINT`     -  OpenTelemetry Collector Endpoint
 * `NSM_REGISTRY_CLIENT_POLICIES`    -  paths to files and directories that contain registry client policies
- 
 
 ## Config file
 
