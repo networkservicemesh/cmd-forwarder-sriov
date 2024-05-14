@@ -18,18 +18,24 @@ Also it works as a device plugin server providing resources for the client pods.
 
 `cmd-forwarder-sriov` accept following environment variables:
 
-* `NSM_NAME` - A string value of forwarder network service endpoint name (default `sriov-forwarder`)
-* `NSM_NS_NAME` - A string value of forwarder network service name (default `sriovns`)
-* `NSM_CONNECT_TO` - A Network Service Manager connectTo URL (default `unix:///var/lib/networkservicemesh/nsm.io.sock`)
-* `NSM_MAX_TOKEN_LIFETIME` - A token lifetime duration (default `24h`)
-* `NSM_RESOURCE_POLL_TIMEOUT` - A timeout to poll device plugin resources usage from kubelet API (default `30s`)
-* `NSM_DEVICE_PLUGIN_PATH` - Path to the device plugin directory (default `/var/lib/kubelet/device-plugins/`)
-* `NSM_POD_RESOURCES_PATH` - Path to the pod resources directory (default `/var/lib/kubelet/pod-resources/`)
-* `NSM_SRIOV_CONFIG_FILE` - Path to the config file (default `./pci.config`)
-* `NSM_PCI_DEVICES_PATH` - Path to the PCI devices directory (default `/sys/bus/pci/devices`)
-* `NSM_PCI_DRIVERS_PATH` - Path to the PCI drivers directory (default `/sys/bus/pci/drivers`)
-* `NSM_CGROUP_PATH` - Path to the host `/sys/fs/cgroup/devices` directory (default `/host/sys/fs/cgroup/devices`)
-* `NSM_VFIO_PATH` - Path to the host `/dev/vfio` directory (default `/host/dev/vfio`)
+* `NSM_NAME`                        -  A string value of forwarder network service endpoint name (default `sriov-forwarder`)
+* `NSM_NSNAME`                      -  A string value of forwarder network service name (default `sriovns`)
+* `NSM_CONNECT_TO`                  -  A Network Service Manager connectTo URL (default `unix:///var/lib/networkservicemesh/nsm.io.sock`)
+* `NSM_MAX_TOKEN_LIFETIME`          -  A token lifetime duration (default `24h`)
+* `NSM_RESOURCE_POLL_TIMEOUT`       -  A timeout to poll device plugin resources usage from kubelet API (default `30s`)
+* `NSM_DEVICE_PLUGIN_PATH`          -  Path to the device plugin directory (default `/var/lib/kubelet/device-plugins/`)
+* `NSM_POD_RESOURCES_PATH`          -  Path to the pod resources directory (default `/var/lib/kubelet/pod-resources/`)
+* `NSM_SRIOV_CONFIG_FILE`           -  Path to the config file (default `./pci.config`)
+* `NSM_PCI_DEVICES_PATH`            -  Path to the PCI devices directory (default `/sys/bus/pci/devices`)
+* `NSM_PCI_DRIVERS_PATH`            -  Path to the PCI drivers directory (default `/sys/bus/pci/drivers`)
+* `NSM_CGROUP_PATH`                 -  Path to the host `/sys/fs/cgroup/devices` directory (default `/host/sys/fs/cgroup/devices`)
+* `NSM_VFIO_PATH`                   -  Path to the host `/dev/vfio` directory (default `/host/dev/vfio`)
+* `NSM_DIAL_TIMEOUT`                -  Timeout for the dial the next endpoint
+* `NSM_LABELS`                      -  Labels related to this forwarder-sriov instance
+* `NSM_LOG_LEVEL`                   -  Log level
+* `NSM_METRICS_EXPORT_INTERVAL`     -  interval between mertics exports
+* `NSM_OPEN_TELEMETRY_ENDPOINT`     -  OpenTelemetry Collector Endpoint
+* `NSM_REGISTRY_CLIENT_POLICIES`    -  paths to files and directories that contain registry client policies
 
 ## Config file
 
