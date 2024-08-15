@@ -36,6 +36,8 @@ Also it works as a device plugin server providing resources for the client pods.
 * `NSM_METRICS_EXPORT_INTERVAL`     -  interval between mertics exports
 * `NSM_OPEN_TELEMETRY_ENDPOINT`     -  OpenTelemetry Collector Endpoint
 * `NSM_REGISTRY_CLIENT_POLICIES`    -  paths to files and directories that contain registry client policies
+* `NSM_PPROF_ENABLED`               - is pprof enabled (default: "false")
+* `NSM_PPROF_LISTEN_ON`             - pprof URL to ListenAndServe (default: "localhost:6060")
 
 ## Config file
 
