@@ -9,9 +9,9 @@ require (
 	github.com/edwarnicke/grpcfd v1.1.4
 	github.com/kelseyhightower/envconfig v1.4.0
 	github.com/networkservicemesh/api v1.13.4-0.20240815101554-fdbfcd84fd0e
-	github.com/networkservicemesh/sdk v0.5.1-0.20241017234257-9a6b64bb5f81
+	github.com/networkservicemesh/sdk v0.5.1-0.20241017235226-a17a4feafcc5
 	github.com/networkservicemesh/sdk-k8s v0.0.0-20241015100114-a140a6b301df
-	github.com/networkservicemesh/sdk-sriov v0.0.0-20241017234921-a55e390dca7b
+	github.com/networkservicemesh/sdk-sriov v0.0.0-20241017235807-0fdb36bf0fa8
 	github.com/pkg/errors v0.9.1
 	github.com/sirupsen/logrus v1.9.0
 	github.com/spiffe/go-spiffe/v2 v2.1.7
@@ -44,7 +44,7 @@ require (
 	github.com/google/uuid v1.3.1 // indirect
 	github.com/grpc-ecosystem/grpc-gateway/v2 v2.16.0 // indirect
 	github.com/matttproud/golang_protobuf_extensions v1.0.4 // indirect
-	github.com/networkservicemesh/sdk-kernel v0.0.0-20241017234510-4f9e6919dd2b // indirect
+	github.com/networkservicemesh/sdk-kernel v0.0.0-20241017235450-3e29bf1e2a16 // indirect
 	github.com/open-policy-agent/opa v0.44.0 // indirect
 	github.com/pmezard/go-difflib v1.0.0 // indirect
 	github.com/prometheus/client_golang v1.17.0 // indirect
@@ -73,7 +73,7 @@ require (
 	go.uber.org/atomic v1.7.0 // indirect
 	golang.org/x/crypto v0.21.0 // indirect
 	golang.org/x/mod v0.10.0 // indirect
-	golang.org/x/net v0.21.0 // indirect
+	golang.org/x/net v0.23.0 // indirect
 	golang.org/x/sys v0.18.0 // indirect
 	golang.org/x/text v0.14.0 // indirect
 	golang.org/x/tools v0.9.3 // indirect
