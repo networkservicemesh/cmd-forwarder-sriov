@@ -8,9 +8,9 @@ require (
 	github.com/edwarnicke/genericsync v0.0.0-20220910010113-61a344f9bc29
 	github.com/edwarnicke/grpcfd v1.1.4
 	github.com/kelseyhightower/envconfig v1.4.0
-	github.com/networkservicemesh/api v1.14.2-0.20241114102931-df7655523954
-	github.com/networkservicemesh/sdk v0.5.1-0.20241209100421-a3673d415f18
-	github.com/networkservicemesh/sdk-k8s v0.0.0-20241209101017-c819d12e9ed0
+	github.com/networkservicemesh/api v1.14.2-rc.1.0.20241209080353-bbb4cd5f8f00
+	github.com/networkservicemesh/sdk v0.5.1-0.20241209114224-1e611de3145f
+	github.com/networkservicemesh/sdk-k8s v0.0.0-20241209115006-0e5337edabd3
 	github.com/networkservicemesh/sdk-sriov v0.0.0-20241209101032-32598e5eb17d
 	github.com/pkg/errors v0.9.1
 	github.com/sirupsen/logrus v1.9.0
