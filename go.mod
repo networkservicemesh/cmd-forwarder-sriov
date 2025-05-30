@@ -11,7 +11,7 @@ require (
 	github.com/networkservicemesh/api v1.14.5-0.20250331122810-c41e3fdcf9e1
 	github.com/networkservicemesh/sdk v0.5.1-0.20250529134003-277b68c092f1
 	github.com/networkservicemesh/sdk-k8s v0.0.0-20250529135245-9ff9b93c5d6b
-	github.com/networkservicemesh/sdk-sriov v0.0.0-20250506124048-aa345a67a7c3
+	github.com/networkservicemesh/sdk-sriov v0.0.0-20250529140332-11bb26a28a9e
 	github.com/pkg/errors v0.9.1
 	github.com/sirupsen/logrus v1.9.3
 	github.com/spiffe/go-spiffe/v2 v2.1.7
@@ -45,7 +45,7 @@ require (
 	github.com/gorilla/mux v1.8.1 // indirect
 	github.com/grpc-ecosystem/grpc-gateway/v2 v2.26.1 // indirect
 	github.com/munnerz/goautoneg v0.0.0-20191010083416-a7dc8b61c822 // indirect
-	github.com/networkservicemesh/sdk-kernel v0.0.0-20250506123711-9703f2916fd0 // indirect
+	github.com/networkservicemesh/sdk-kernel v0.0.0-20250529135134-5a6e6fdc157b // indirect
 	github.com/open-policy-agent/opa v1.4.0 // indirect
 	github.com/pmezard/go-difflib v1.0.1-0.20181226105442-5d4384ee4fb2 // indirect
 	github.com/prometheus/client_golang v1.21.1 // indirect
