@@ -28,7 +28,7 @@ jobs:
     if: github.repository == 'networkservicemesh/cmd-template'
     steps:
       - name: Checkout ${{ matrix.repository }}
-        uses: actions/checkout@v2
+        uses: actions/checkout@v4
         with:
           path: ${{ matrix.repository }}
           repository: ${{ matrix.repository}}
